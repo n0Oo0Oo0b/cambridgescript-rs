@@ -304,9 +304,9 @@ impl<'a> Iterator for ScannerIterator<'a> {
         if self.ignore_irrelevant {
             // Skip whitespace and comment tokens
             while let Some(Ok(Token {
-                                  type_: TokenType::Comment | TokenType::Whitespace,
-                                  ..
-                              })) = token
+                type_: TokenType::Comment | TokenType::Whitespace,
+                ..
+            })) = token
             {
                 token = self.scanner.scan_next();
             }
