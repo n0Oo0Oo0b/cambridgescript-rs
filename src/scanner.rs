@@ -315,11 +315,14 @@ pub fn iter_tokens(source: &str) -> ScannerIterator {
     }
 }
 
-pub fn scan_into(source: &str, tokens: &mut Vec<Token>, errors: &mut Vec<ScannerError>) {
+pub fn scan(source: &str) -> (Vec<Token>, Vec<ScannerError>) {
+    let mut tokens: Vec<Token> = Vec::new();
+    let mut errors: Vec<ScannerError> = Vec::new();
     for item in iter_tokens(source) {
         match item {
             Ok(token) => tokens.push(token),
             Err(error) => errors.push(error),
         }
     }
+    (tokens, errors)
 }
