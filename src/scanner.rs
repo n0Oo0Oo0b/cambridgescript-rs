@@ -80,14 +80,14 @@ pub struct Token {
     pub location: Location,
 }
 
-pub struct Scanner<'a> {
+struct Scanner<'a> {
     source: iter::Peekable<str::Chars<'a>>,
     cur_lexeme: String,
     cur_location: Location,
 }
 
 impl<'a> Scanner<'a> {
-    pub fn from_source(source: &'a str) -> Self {
+    fn from_source(source: &'a str) -> Self {
         Self {
             source: source.chars().peekable(),
             cur_lexeme: String::new(),
@@ -282,13 +282,6 @@ impl<'a> Scanner<'a> {
         };
         Some(result.map(|t| self.create_token(t, location)))
     }
-
-    pub fn iter_tokens(self, ignore_irrelevant: bool) -> ScannerIterator<'a> {
-        ScannerIterator {
-            scanner: self,
-            ignore_irrelevant,
-        }
-    }
 }
 
 pub struct ScannerIterator<'a> {
@@ -312,5 +305,21 @@ impl<'a> Iterator for ScannerIterator<'a> {
             }
         };
         token
+    }
+}
+
+pub fn iter_tokens(source: &str) -> ScannerIterator {
+    ScannerIterator {
+        scanner: Scanner::from_source(source),
+        ignore_irrelevant: true,
+    }
+}
+
+pub fn scan_into(source: &str, tokens: &mut Vec<Token>, errors: &mut Vec<ScannerError>) {
+    for item in iter_tokens(source) {
+        match item {
+            Ok(token) => tokens.push(token),
+            Err(error) => errors.push(error),
+        }
     }
 }
