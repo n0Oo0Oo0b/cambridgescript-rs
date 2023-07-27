@@ -158,7 +158,7 @@ impl<'a> Scanner<'a> {
         if !self.advance_if_match('"') {
             return Err(ScannerError::UnterminatedString(self.cur_location));
         };
-        let content = self.cur_lexeme[0..self.cur_lexeme.len()].to_string();
+        let content = self.cur_lexeme[1..self.cur_lexeme.len() - 1].to_string();
         Ok(TokenType::StringLiteral(content))
     }
 
