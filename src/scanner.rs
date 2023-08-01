@@ -242,7 +242,13 @@ impl<'a> Scanner<'a> {
             '[' => Ok(TokenType::LBracket),
             ']' => Ok(TokenType::RBracket),
             '+' => Ok(TokenType::Plus),
-            '-' => Ok(TokenType::Minus),
+            '-' => {
+                if self.check_next(&char::is_ascii_digit) {
+                    self.number()
+                } else {
+                    Ok(TokenType::Minus)
+                }
+            },
             '*' => Ok(TokenType::Star),
             '/' => {
                 if self.advance_if_match('/') {
