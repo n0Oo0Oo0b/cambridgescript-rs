@@ -70,6 +70,7 @@ impl Location {
 #[derive(Debug)]
 pub enum ScannerError {
     UnterminatedString(Location),
+    InvalidRealLiteral(Location),
     UnexpectedCharacter(char, Location),
 }
 
@@ -216,8 +217,11 @@ impl<'a> Scanner<'a> {
     fn number(&mut self) -> Result<TokenType, ScannerError> {
         self.advance_while(&char::is_ascii_digit);
         if self.advance_if_match('.') {
+            if !self.check_next(&char::is_ascii_digit) {
+                return Err(ScannerError::InvalidRealLiteral(self.cur_location))
+            }
             self.advance_while(&char::is_ascii_digit);
-            Ok(TokenType::RealLiteral(0.0))
+            Ok(TokenType::RealLiteral(self.cur_lexeme.parse().unwrap()))
         } else {
             Ok(TokenType::IntegerLiteral(self.cur_lexeme.parse().unwrap()))
         }
