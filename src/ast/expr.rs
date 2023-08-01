@@ -41,7 +41,7 @@ pub struct UnaryExpr {
 
 pub struct FunctionCallExpr {
     pub function: Expr,
-    pub arguments: Vec<Expr>,
+    pub args: Vec<Expr>,
 }
 
 pub struct ArrayIndexExpr {
