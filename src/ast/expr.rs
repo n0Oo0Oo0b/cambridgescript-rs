@@ -20,33 +20,27 @@ pub enum UnaryOperator {
     LogicNot,
 }
 
+#[derive(Debug)]
 pub enum Expr {
-    Binary(Box<BinaryExpr>),
-    Unary(Box<UnaryExpr>),
-    FunctionCall(Box<FunctionCallExpr>),
-    ArrayIndex(Box<ArrayIndexExpr>),
+    Binary {
+        left: Box<Expr>,
+        operator: BinaryOperator,
+        right: Box<Expr>,
+    },
+    Unary {
+        operator: UnaryOperator,
+        right: Box<Expr>,
+    },
+    FunctionCall {
+        function: Box<Expr>,
+        args: Vec<Expr>,
+    },
+    ArrayIndex {
+        array: Box<Expr>,
+        indexes: Vec<Expr>,
+    },
+    Identifier(Identifier),
     Literal(Literal),
-}
-
-pub struct BinaryExpr {
-    pub left: Expr,
-    pub operator: BinaryOperator,
-    pub right: Expr,
-}
-
-pub struct UnaryExpr {
-    pub operator: UnaryOperator,
-    pub right: Expr,
-}
-
-pub struct FunctionCallExpr {
-    pub function: Expr,
-    pub args: Vec<Expr>,
-}
-
-pub struct ArrayIndexExpr {
-    pub array: Expr,
-    pub indices: Vec<Expr>,
 }
 
 #[derive(Debug)]
