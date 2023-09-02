@@ -1,19 +1,19 @@
-use crate::ast::{Expr, Identifier, Type, Literal};
+use crate::ast::{Expr, Literal, Type};
 
 #[derive(Debug)]
 pub enum FileMode {
     Read,
-    Write
+    Write,
 }
 
 pub enum Stmt {
     ProcedureDecl {
-        name: Identifier,
+        name: Expr,
         params: Option<Vec<Parameter>>,
         body: Block,
     },
     FunctionDecl {
-        name: Identifier,
+        name: Expr,
         params: Option<Vec<Parameter>>,
         body: Block,
     },
@@ -43,11 +43,11 @@ pub enum Stmt {
         body: Block,
     },
     VariableDecl {
-        name: Identifier,
+        name: Expr,
         type_: Type,
     },
     ConstantDecl {
-        name: Identifier,
+        name: Expr,
         value: Literal,
     },
     Input(Vec<Expr>),
@@ -69,7 +69,7 @@ pub enum Stmt {
         file: Literal,
     },
     Procedure {
-        name: Identifier,
+        name: Expr,
         args: Option<Vec<Expr>>,
     },
     Assignment {
@@ -83,6 +83,6 @@ pub struct Block {
 }
 
 pub struct Parameter {
-    name: Identifier,
+    name: Expr,
     type_: Type,
 }

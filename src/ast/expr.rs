@@ -39,7 +39,9 @@ pub enum Expr {
         array: Box<Expr>,
         indexes: Vec<Expr>,
     },
-    Identifier(Identifier),
+    Identifier {
+        handle: usize,
+    },
     Literal(Literal),
 }
 
@@ -50,9 +52,4 @@ pub enum Literal {
     Integer(i64),
     Real(f64),
     Boolean(bool),
-}
-
-#[derive(Debug)]
-pub struct Identifier {
-    handle: u64,
 }
