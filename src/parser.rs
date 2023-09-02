@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::iter::Peekable;
 use crate::ast::*;
-use crate::scanner::Token;
+use crate::scanner::{Token,TokenType};
 
 pub enum ParserError {
     UnexpectedToken(Token),
+    UnexpectedEOF,
 }
 
 pub struct Parser<T: IntoIterator<Item=Token>> {
@@ -22,6 +23,18 @@ impl<T: IntoIterator<Item=Token>> From<T> for Parser<T> {
 }
 
 impl<T: IntoIterator<Item=Token>> Parser<T> {
+    fn consume(&mut self, type_: TokenType) -> Result<(), ParserError> {
+        let next_token: Token = match self.tokens.next() {
+            Some(t) => t,
+            None => return Err(ParserError::UnexpectedEOF),
+        };
+        if next_token.type_ == type_ {
+            Ok(())
+        } else {
+            Err(ParserError::UnexpectedToken(next_token))
+        }
+    }
+
     fn parse_block(&mut self) -> Vec<Stmt> {
         todo!()
     }

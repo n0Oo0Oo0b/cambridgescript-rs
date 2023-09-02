@@ -2,7 +2,7 @@ use std::iter;
 use std::str;
 
 #[rustfmt::skip]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TokenType {
     // Reserved words
 
