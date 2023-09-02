@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::iter::Peekable;
 use crate::ast::*;
 use crate::scanner::Token;
@@ -7,13 +8,15 @@ pub enum ParserError {
 }
 
 pub struct Parser<T: IntoIterator<Item=Token>> {
-    tokens: Peekable<T::IntoIter>
+    tokens: Peekable<T::IntoIter>,
+    identifier_map: HashMap<Box<str>, usize>
 }
 
 impl<T: IntoIterator<Item=Token>> From<T> for Parser<T> {
     fn from(value: T) -> Self {
         Parser {
             tokens: value.into_iter().peekable(),
+            identifier_map: HashMap::new(),
         }
     }
 }
@@ -59,7 +62,15 @@ impl<T: IntoIterator<Item=Token>> Parser<T> {
         todo!()
     }
 
-    fn parse_primary(&mut self) -> Expr {
-        todo!()
+    fn parse_primary(&mut self) -> Result<Expr, ParserError> {
+    }
+
+    fn get_ident_handle(&mut self, ident: Box<str>) -> usize {
+        if let Some(&handle) = self.identifier_map.get(&ident) {
+            return handle
+        }
+        let new_handle = self.identifier_map.len();
+        let _ = self.identifier_map.insert(ident, new_handle);
+        new_handle
     }
 }
