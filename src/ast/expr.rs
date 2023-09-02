@@ -46,7 +46,7 @@ pub enum Expr {
 #[derive(Debug)]
 pub enum Literal {
     Char(char),
-    String(String),
+    String(Box<str>),
     Integer(i64),
     Real(f64),
     Boolean(bool),
