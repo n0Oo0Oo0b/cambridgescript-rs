@@ -76,6 +76,26 @@ impl<T: IntoIterator<Item=Token>> Parser<T> {
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParserError> {
+        let next_token: Token = match self.tokens.next() {
+            Some(t) => t,
+            None => return Err(ParserError::UnexpectedEOF)
+        };
+        let expr = match next_token.type_ {
+            TokenType::Identifier(ident) =>
+                Expr::Identifier { handle: self.get_ident_handle(ident) },
+            TokenType::CharLiteral(c) => Expr::Literal(Literal::Char(c)),
+            TokenType::StringLiteral(s) => Expr::Literal(Literal::String(s)),
+            TokenType::IntegerLiteral(i) => Expr::Literal(Literal::Integer(i)),
+            TokenType::RealLiteral(r) => Expr::Literal(Literal::Real(r)),
+            TokenType::BooleanLiteral(b) => Expr::Literal(Literal::Boolean(b)),
+            TokenType::LParen => {
+                let inner = self.parse_expression();
+                self.consume(TokenType::RParen)?;
+                inner
+            },
+            _ => return Err(ParserError::UnexpectedToken(next_token)),
+        };
+        Ok(expr)
     }
 
     fn get_ident_handle(&mut self, ident: Box<str>) -> usize {
