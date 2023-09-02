@@ -35,10 +35,10 @@ pub enum TokenType {
 
     // Others
 
-    Identifier(String),
+    Identifier(Box<str>),
 
     CharLiteral(char),
-    StringLiteral(String),
+    StringLiteral(Box<str>),
     IntegerLiteral(i64),
     RealLiteral(f64),
     BooleanLiteral(bool),
@@ -160,7 +160,7 @@ impl<'a> Scanner<'a> {
             return Err(ScannerError::UnterminatedString(self.cur_location));
         };
         let content = self.cur_lexeme[1..self.cur_lexeme.len() - 1].to_string();
-        Ok(TokenType::StringLiteral(content))
+        Ok(TokenType::StringLiteral(content.into_boxed_str()))
     }
 
     fn identifier(&mut self) -> TokenType {
