@@ -36,11 +36,11 @@ impl<T: IntoIterator<Item=Token>> Parser<T> {
     }
 
     fn parse_block(&mut self) -> Vec<Stmt> {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_stmt(&mut self) -> Vec<Stmt> {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_expression(&mut self) -> Expr {
@@ -48,31 +48,31 @@ impl<T: IntoIterator<Item=Token>> Parser<T> {
     }
 
     fn parse_logic_or(&mut self) -> Expr {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_logic_and(&mut self) -> Expr {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_logic_not(&mut self) -> Expr {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_comparison(&mut self) -> Expr {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_term(&mut self) -> Expr {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_factor(&mut self) -> Expr {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_call(&mut self) -> Expr {
-        todo!()
+        unimplemented!()
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParserError> {
