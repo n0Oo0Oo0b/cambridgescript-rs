@@ -77,7 +77,7 @@ pub enum ScannerError {
 #[derive(Debug)]
 pub struct Token {
     pub type_: TokenType,
-    pub lexeme: String,
+    pub lexeme: Box<str>,
     pub location: Location,
 }
 
@@ -133,7 +133,7 @@ impl<'a> Scanner<'a> {
     fn create_token(&mut self, type_: TokenType, location: Location) -> Token {
         Token {
             type_,
-            lexeme: self.cur_lexeme.clone(),
+            lexeme: self.cur_lexeme.clone().into_boxed_str(),
             location,
         }
     }
@@ -218,7 +218,7 @@ impl<'a> Scanner<'a> {
         self.advance_while(&char::is_ascii_digit);
         if self.advance_if_match('.') {
             if !self.check_next(&char::is_ascii_digit) {
-                return Err(ScannerError::InvalidRealLiteral(self.cur_location))
+                return Err(ScannerError::InvalidRealLiteral(self.cur_location));
             }
             self.advance_while(&char::is_ascii_digit);
             Ok(TokenType::RealLiteral(self.cur_lexeme.parse().unwrap()))
@@ -252,7 +252,7 @@ impl<'a> Scanner<'a> {
                 } else {
                     Ok(TokenType::Minus)
                 }
-            },
+            }
             '*' => Ok(TokenType::Star),
             '/' => {
                 if self.advance_if_match('/') {
