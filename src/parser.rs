@@ -89,7 +89,7 @@ impl<T: IntoIterator<Item=Token>> Parser<T> {
             TokenType::RealLiteral(r) => Expr::Literal(Literal::Real(r)),
             TokenType::BooleanLiteral(b) => Expr::Literal(Literal::Boolean(b)),
             TokenType::LParen => {
-                let inner = self.parse_expression();
+                let inner = self.parse_expression()?;
                 self.consume(TokenType::RParen)?;
                 inner
             },
