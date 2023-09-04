@@ -294,12 +294,12 @@ impl<'a> Scanner<'a> {
     }
 }
 
-pub struct ScannerIterator<'a> {
+pub struct TokenStream<'a> {
     scanner: Scanner<'a>,
     ignore_irrelevant: bool,
 }
 
-impl<'a> Iterator for ScannerIterator<'a> {
+impl<'a> Iterator for TokenStream<'a> {
     type Item = Result<Token, ScannerError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -318,8 +318,8 @@ impl<'a> Iterator for ScannerIterator<'a> {
     }
 }
 
-pub fn iter_tokens(source: &str) -> ScannerIterator {
-    ScannerIterator {
+pub fn iter_tokens(source: &str) -> TokenStream {
+    TokenStream {
         scanner: Scanner::from_source(source),
         ignore_irrelevant: true,
     }
