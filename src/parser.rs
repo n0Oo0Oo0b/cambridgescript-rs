@@ -1,15 +1,15 @@
 use crate::ast::*;
 use crate::scanner::{Token, TokenType};
 use std::collections::HashMap;
-use std::iter::Peekable;
 use std::rc::Rc;
 
+#[derive(Debug)]
 pub enum ParserError {
     UnexpectedToken(Token),
     UnexpectedEOF,
 }
 
-pub struct TokenBuffer {
+struct TokenBuffer {
     items: Box<[Token]>,
     current: usize,
 }
@@ -55,6 +55,7 @@ macro_rules! binary_op {
                     )+
                     _ => break,
                 };
+                tokens.next();
                 let right = self.$parent(tokens)?;
                 left = Expr::Binary {
                     left: Box::new(left),
@@ -67,7 +68,7 @@ macro_rules! binary_op {
     }
 }
 
-pub struct Parser {
+struct Parser {
     identifier_map: HashMap<Rc<str>, usize>,
 }
 
@@ -118,7 +119,7 @@ impl Parser {
     }
 
     binary_op! {
-        parse_comparison: parse_logic_not {
+        parse_comparison: parse_term {
             Equal => BinaryOperator::Equal,
             NotEqual => BinaryOperator::NotEqual,
             Less => BinaryOperator::Less,
@@ -129,7 +130,7 @@ impl Parser {
     }
 
     binary_op! {
-        parse_term: parse_comparison {
+        parse_term: parse_factor {
             Plus => BinaryOperator::Plus,
             Minus => BinaryOperator::Minus,
         }
