@@ -89,24 +89,34 @@ impl Parser {
         self.parse_logic_or(tokens)
     }
 
-    fn parse_logic_or(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        unimplemented!()
+    binary_op! {
+        parse_logic_or: parse_logic_and {Or => BinaryOperator::LogicOr}
     }
 
-    fn parse_logic_and(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        unimplemented!()
+    binary_op! {
+        parse_logic_and: parse_logic_not {And => BinaryOperator::LogicAnd}
     }
 
     fn parse_logic_not(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         unimplemented!()
     }
 
-    fn parse_comparison(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        unimplemented!()
+    binary_op! {
+        parse_comparison: parse_logic_not {
+            Equal => BinaryOperator::Equal,
+            NotEqual => BinaryOperator::NotEqual,
+            Less => BinaryOperator::Less,
+            LessEqual => BinaryOperator::LessEqual,
+            Greater => BinaryOperator::Greater,
+            GreaterEqual => BinaryOperator::GreaterEqual,
+        }
     }
 
-    fn parse_term(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        unimplemented!()
+    binary_op! {
+        parse_term: parse_comparison {
+            Plus => BinaryOperator::Plus,
+            Minus => BinaryOperator::Minus,
+        }
     }
 
     binary_op! {
