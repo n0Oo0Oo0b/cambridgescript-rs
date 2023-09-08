@@ -123,7 +123,7 @@ impl Parser {
     }
 
     fn parse_logic_not(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        if tokens.next_if_equal(TokenType::Minus).is_some() {
+        if tokens.next_if_equal(TokenType::Not).is_some() {
             Ok(Expr::Unary {
                 operator: UnaryOperator::LogicNot,
                 right: Box::new(self.parse_logic_not(tokens)?),
