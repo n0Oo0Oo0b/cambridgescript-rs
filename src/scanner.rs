@@ -49,8 +49,8 @@ pub enum TokenType {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Location {
-    line: usize,
-    column: usize,
+    line: u32,
+    column: u32,
 }
 
 impl Location {
