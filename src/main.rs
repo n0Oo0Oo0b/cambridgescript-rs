@@ -17,5 +17,6 @@ fn main() {
         dbg!(error);
     }
 
-    let p = parser::Parser::from(tokens);
+    let expr = parser::parse_expression(tokens);
+    dbg!(&expr);
 }

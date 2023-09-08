@@ -44,6 +44,15 @@ impl TokenBuffer {
     }
 }
 
+impl FromIterator<Token> for TokenBuffer {
+    fn from_iter<T: IntoIterator<Item=Token>>(iter: T) -> Self {
+        TokenBuffer {
+            items: iter.into_iter().collect(),
+            current: 0,
+        }
+    }
+}
+
 macro_rules! binary_op {
     ($name:ident : $parent:ident { $( $token:ident => $op:expr ),+ $(,)? } ) => {
         fn $name(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
@@ -73,6 +82,12 @@ struct Parser {
 }
 
 impl Parser {
+    fn new() -> Self {
+        Parser {
+            identifier_map: HashMap::new(),
+        }
+    }
+
     fn consume(&mut self, tokens: &mut TokenBuffer, type_: TokenType) -> Result<(), ParserError> {
         let next_token: TokenType = match tokens.next() {
             Some(t) => t,
@@ -192,4 +207,10 @@ impl Parser {
         let _ = self.identifier_map.insert(ident, new_handle);
         new_handle
     }
+}
+
+pub fn parse_expression(tokens: impl IntoIterator<Item=Token>) -> Result<Expr, ParserError> {
+    let mut buf = TokenBuffer::from_iter(tokens);
+    let mut parser = Parser::new();
+    parser.parse_expression(&mut buf)
 }
