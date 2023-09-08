@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::iter::Peekable;
+use std::rc::Rc;
 use crate::ast::*;
 use crate::scanner::{Token,TokenType};
 
@@ -8,18 +8,36 @@ pub enum ParserError {
     UnexpectedEOF,
 }
 
-pub struct Parser<T: IntoIterator<Item=Token>> {
-    tokens: Peekable<T::IntoIter>,
-    identifier_map: HashMap<Box<str>, usize>
+pub struct TokenBuffer {
+    items: Box<[Token]>,
+    current: usize,
 }
 
-impl<T: IntoIterator<Item=Token>> From<T> for Parser<T> {
-    fn from(value: T) -> Self {
-        Parser {
-            tokens: value.into_iter().peekable(),
-            identifier_map: HashMap::new(),
+impl TokenBuffer {
+    fn current_token(&self) -> Option<&Token> {
+        if self.current < self.items.len() {
+            Some(&self.items[self.current])
+        } else {
+            None
         }
+
     }
+
+    fn peek(&self) -> Option<TokenType> {
+        self.current_token().map(|t| t.type_.clone())
+    }
+
+    fn next(&mut self) -> Option<TokenType> {
+        let res = self.peek();
+        if res.is_some() {
+            self.current += 1;
+        }
+        res
+    }
+}
+
+pub struct Parser {
+    identifier_map: HashMap<Rc<str>, usize>
 }
 
 impl<T: IntoIterator<Item=Token>> Parser<T> {
