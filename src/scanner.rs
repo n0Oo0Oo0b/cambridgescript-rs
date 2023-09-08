@@ -1,8 +1,9 @@
 use std::iter;
+use std::rc::Rc;
 use std::str;
 
 #[rustfmt::skip]
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TokenType {
     // Reserved words
 
@@ -35,10 +36,10 @@ pub enum TokenType {
 
     // Others
 
-    Identifier(Box<str>),
+    Identifier(Rc<str>),
 
     CharLiteral(char),
-    StringLiteral(Box<str>),
+    StringLiteral(Rc<str>),
     IntegerLiteral(i64),
     RealLiteral(f64),
     BooleanLiteral(bool),
@@ -74,7 +75,7 @@ pub enum ScannerError {
     UnexpectedCharacter(char, Location),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Token {
     pub type_: TokenType,
     pub lexeme: Box<str>,
@@ -160,7 +161,7 @@ impl<'a> Scanner<'a> {
             return Err(ScannerError::UnterminatedString(self.cur_location));
         };
         let content = self.cur_lexeme[1..self.cur_lexeme.len() - 1].to_string();
-        Ok(TokenType::StringLiteral(content.into_boxed_str()))
+        Ok(TokenType::StringLiteral(content.into()))
     }
 
     fn identifier(&mut self) -> TokenType {

@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 #[derive(Debug)]
 pub enum BinaryOperator {
     LogicAnd,
@@ -48,7 +50,7 @@ pub enum Expr {
 #[derive(Debug)]
 pub enum Literal {
     Char(char),
-    String(Box<str>),
+    String(Rc<str>),
     Integer(i64),
     Real(f64),
     Boolean(bool),

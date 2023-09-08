@@ -98,7 +98,7 @@ impl<T: IntoIterator<Item=Token>> Parser<T> {
         Ok(expr)
     }
 
-    fn get_ident_handle(&mut self, ident: Box<str>) -> usize {
+    fn get_ident_handle(&mut self, ident: Rc<str>) -> usize {
         if let Some(&handle) = self.identifier_map.get(&ident) {
             return handle
         }
