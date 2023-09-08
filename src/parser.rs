@@ -1,7 +1,7 @@
+use crate::ast::*;
+use crate::scanner::{Token, TokenType};
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::ast::*;
-use crate::scanner::{Token,TokenType};
 
 pub enum ParserError {
     UnexpectedToken(Token),
@@ -20,7 +20,6 @@ impl TokenBuffer {
         } else {
             None
         }
-
     }
 
     fn peek(&self) -> Option<TokenType> {
@@ -35,7 +34,6 @@ impl TokenBuffer {
         res
     }
 }
-
 
 macro_rules! binary_op {
     ($name:ident : $parent:ident { $( $token:ident => $op:expr ),+ $(,)? } ) => {
@@ -60,9 +58,8 @@ macro_rules! binary_op {
     }
 }
 
-
 pub struct Parser {
-    identifier_map: HashMap<Rc<str>, usize>
+    identifier_map: HashMap<Rc<str>, usize>,
 }
 
 impl Parser {
@@ -75,7 +72,7 @@ impl Parser {
             Ok(())
         } else {
             Err(ParserError::UnexpectedToken(
-                tokens.current_token().unwrap().clone()
+                tokens.current_token().unwrap().clone(),
             ))
         }
     }
@@ -112,12 +109,12 @@ impl Parser {
         unimplemented!()
     }
 
-    binary_op!(
+    binary_op! {
         parse_factor: parse_term {
             Star => BinaryOperator::Star,
             Slash => BinaryOperator::Slash,
         }
-    );
+    }
 
     fn parse_call(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         let mut left = self.parse_primary(tokens)?;
@@ -128,43 +125,41 @@ impl Parser {
                 args: vec![],
             };
             self.consume(tokens, TokenType::RParen)?;
-        };
+        }
         Ok(left)
     }
 
     fn parse_primary(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         let next_token: TokenType = match tokens.next() {
             Some(t) => t,
-            None => return Err(ParserError::UnexpectedEOF)
+            None => return Err(ParserError::UnexpectedEOF),
         };
         let expr = match next_token {
-            TokenType::Identifier(ident) =>
-                Expr::Identifier { handle: self.get_ident_handle(ident) },
-            TokenType::CharLiteral(c) =>
-                Expr::Literal(Literal::Char(c)),
-            TokenType::StringLiteral(s) =>
-                Expr::Literal(Literal::String(s)),
-            TokenType::IntegerLiteral(i) =>
-                Expr::Literal(Literal::Integer(i)),
-            TokenType::RealLiteral(r) =>
-                Expr::Literal(Literal::Real(r)),
-            TokenType::BooleanLiteral(b) =>
-                Expr::Literal(Literal::Boolean(b)),
+            TokenType::Identifier(ident) => Expr::Identifier {
+                handle: self.get_ident_handle(ident),
+            },
+            TokenType::CharLiteral(c) => Expr::Literal(Literal::Char(c)),
+            TokenType::StringLiteral(s) => Expr::Literal(Literal::String(s)),
+            TokenType::IntegerLiteral(i) => Expr::Literal(Literal::Integer(i)),
+            TokenType::RealLiteral(r) => Expr::Literal(Literal::Real(r)),
+            TokenType::BooleanLiteral(b) => Expr::Literal(Literal::Boolean(b)),
             TokenType::LParen => {
                 let inner = self.parse_expression(tokens)?;
                 self.consume(tokens, TokenType::RParen)?;
                 inner
-            },
-            _ => return Err(ParserError::UnexpectedToken(
-                tokens.current_token().unwrap().clone()
-            )),
+            }
+            _ => {
+                return Err(ParserError::UnexpectedToken(
+                    tokens.current_token().unwrap().clone(),
+                ))
+            }
         };
         Ok(expr)
     }
 
     fn get_ident_handle(&mut self, ident: Rc<str>) -> usize {
         if let Some(&handle) = self.identifier_map.get(&ident) {
-            return handle
+            return handle;
         }
         let new_handle = self.identifier_map.len();
         let _ = self.identifier_map.insert(ident, new_handle);
