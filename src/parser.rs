@@ -31,7 +31,7 @@ impl TokenBuffer {
         let res = self.peek();
         if res.is_some() {
             self.current += 1;
-        }
+        };
         res
     }
 }
@@ -99,7 +99,7 @@ impl Parser {
                 args: vec![],
             };
             self.consume(tokens, TokenType::RParen)?;
-        }
+        };
         Ok(left)
     }
 
