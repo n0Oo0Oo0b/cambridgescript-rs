@@ -25,7 +25,7 @@ pub enum TokenType {
     Integer, Real, Char, String, Boolean,
     Array, Of,
 
-    And, Or, Not,
+    And, Or, Not, Div, Mod,
 
     // Symbols
 
@@ -211,6 +211,8 @@ impl<'a> Scanner<'a> {
             "AND" => TokenType::And,
             "OR" => TokenType::Or,
             "NOT" => TokenType::Not,
+            "DIV" => TokenType::Div,
+            "MOD" => TokenType::Mod,
             identifier => TokenType::Identifier(identifier.into()),
         }
     }

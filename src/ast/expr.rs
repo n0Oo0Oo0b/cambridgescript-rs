@@ -8,6 +8,8 @@ pub enum BinaryOperator {
     Minus,
     Star,
     Slash,
+    Div,
+    Mod,
     Caret,
     Equal,
     NotEqual,
