@@ -36,6 +36,31 @@ impl TokenBuffer {
     }
 }
 
+
+macro_rules! binary_op {
+    ($name:ident : $parent:ident { $( $token:ident => $op:expr ),+ $(,)? } ) => {
+        fn $name(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
+            let mut left = self.$parent(tokens)?;
+            loop {
+                let op = match tokens.peek() {
+                    $(
+                        Some(TokenType::$token) => $op,
+                    )+
+                    _ => break,
+                };
+                let right = self.$parent(tokens)?;
+                left = Expr::Binary {
+                    left: Box::new(left),
+                    operator: op,
+                    right: Box::new(right),
+                }
+            };
+            Ok(left)
+        }
+    }
+}
+
+
 pub struct Parser {
     identifier_map: HashMap<Rc<str>, usize>
 }
@@ -87,13 +112,17 @@ impl Parser {
         unimplemented!()
     }
 
-    fn parse_factor(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        unimplemented!()
-    }
+    binary_op!(
+        parse_factor: parse_term {
+            Star => BinaryOperator::Star,
+            Slash => BinaryOperator::Slash,
+        }
+    );
 
     fn parse_call(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         let mut left = self.parse_primary(tokens)?;
-        while let Some(TokenType::LParen) = tokens.next() {
+        while let Some(TokenType::LParen) = tokens.peek() {
+            tokens.next();
             left = Expr::FunctionCall {
                 function: Box::new(left),
                 args: vec![],
