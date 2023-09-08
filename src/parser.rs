@@ -40,78 +40,87 @@ pub struct Parser {
     identifier_map: HashMap<Rc<str>, usize>
 }
 
-impl<T: IntoIterator<Item=Token>> Parser<T> {
-    fn consume(&mut self, type_: TokenType) -> Result<(), ParserError> {
-        let next_token: Token = match self.tokens.next() {
+impl Parser {
+    fn consume(&mut self, tokens: &mut TokenBuffer, type_: TokenType) -> Result<(), ParserError> {
+        let next_token: TokenType = match tokens.next() {
             Some(t) => t,
             None => return Err(ParserError::UnexpectedEOF),
         };
-        if next_token.type_ == type_ {
+        if next_token == type_ {
             Ok(())
         } else {
-            Err(ParserError::UnexpectedToken(next_token))
+            Err(ParserError::UnexpectedToken(
+                tokens.current_token().unwrap().clone()
+            ))
         }
     }
 
-    fn parse_block(&mut self) -> Vec<Stmt> {
+    fn parse_block(&mut self, tokens: &mut TokenBuffer) -> Vec<Stmt> {
         unimplemented!()
     }
 
-    fn parse_stmt(&mut self) -> Result<Stmt, ParserError> {
+    fn parse_stmt(&mut self, tokens: &mut TokenBuffer) -> Result<Stmt, ParserError> {
         unimplemented!()
     }
 
-    fn parse_expression(&mut self) -> Result<Expr, ParserError> {
-        self.parse_logic_or()
+    fn parse_expression(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
+        self.parse_logic_or(tokens)
     }
 
-    fn parse_logic_or(&mut self) -> Result<Expr, ParserError> {
+    fn parse_logic_or(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         unimplemented!()
     }
 
-    fn parse_logic_and(&mut self) -> Result<Expr, ParserError> {
+    fn parse_logic_and(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         unimplemented!()
     }
 
-    fn parse_logic_not(&mut self) -> Result<Expr, ParserError> {
+    fn parse_logic_not(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         unimplemented!()
     }
 
-    fn parse_comparison(&mut self) -> Result<Expr, ParserError> {
+    fn parse_comparison(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         unimplemented!()
     }
 
-    fn parse_term(&mut self) -> Result<Expr, ParserError> {
+    fn parse_term(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         unimplemented!()
     }
 
-    fn parse_factor(&mut self) -> Result<Expr, ParserError> {
+    fn parse_factor(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         unimplemented!()
     }
 
-    fn parse_call(&mut self) -> Result<Expr, ParserError> {
         unimplemented!()
+    fn parse_call(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
     }
 
-    fn parse_primary(&mut self) -> Result<Expr, ParserError> {
-        let next_token: Token = match self.tokens.next() {
+    fn parse_primary(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
+        let next_token: TokenType = match tokens.next() {
             Some(t) => t,
             None => return Err(ParserError::UnexpectedEOF)
         };
-        let expr = match next_token.type_ {
+        let expr = match next_token {
             TokenType::Identifier(ident) =>
                 Expr::Identifier { handle: self.get_ident_handle(ident) },
-            TokenType::CharLiteral(c) => Expr::Literal(Literal::Char(c)),
-            TokenType::StringLiteral(s) => Expr::Literal(Literal::String(s)),
-            TokenType::IntegerLiteral(i) => Expr::Literal(Literal::Integer(i)),
-            TokenType::RealLiteral(r) => Expr::Literal(Literal::Real(r)),
-            TokenType::BooleanLiteral(b) => Expr::Literal(Literal::Boolean(b)),
+            TokenType::CharLiteral(c) =>
+                Expr::Literal(Literal::Char(c)),
+            TokenType::StringLiteral(s) =>
+                Expr::Literal(Literal::String(s)),
+            TokenType::IntegerLiteral(i) =>
+                Expr::Literal(Literal::Integer(i)),
+            TokenType::RealLiteral(r) =>
+                Expr::Literal(Literal::Real(r)),
+            TokenType::BooleanLiteral(b) =>
+                Expr::Literal(Literal::Boolean(b)),
             TokenType::LParen => {
-                let inner = self.parse_expression()?;
-                self.consume(TokenType::RParen)?;
+                let inner = self.parse_expression(tokens)?;
+                self.consume(tokens, TokenType::RParen)?;
                 inner
             },
-            _ => return Err(ParserError::UnexpectedToken(next_token)),
+            _ => return Err(ParserError::UnexpectedToken(
+                tokens.current_token().unwrap().clone()
+            )),
         };
         Ok(expr)
     }
