@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::scanner::{Token, TokenType};
 use std::collections::HashMap;
+use std::iter::Peekable;
 use std::rc::Rc;
 
 pub enum ParserError {
@@ -32,6 +33,14 @@ impl TokenBuffer {
             self.current += 1;
         };
         res
+    }
+
+    fn next_if_equal(&mut self, other: TokenType) -> Option<TokenType> {
+        if self.peek()? == other {
+            self.next()
+        } else {
+            None
+        }
     }
 }
 
@@ -98,7 +107,14 @@ impl Parser {
     }
 
     fn parse_logic_not(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        unimplemented!()
+        if tokens.next_if_equal(TokenType::Minus).is_some() {
+            Ok(Expr::Unary {
+                operator: UnaryOperator::LogicNot,
+                right: Box::new(self.parse_logic_not(tokens)?),
+            })
+        } else {
+            self.parse_comparison(tokens)
+        }
     }
 
     binary_op! {
