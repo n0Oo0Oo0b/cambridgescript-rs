@@ -152,7 +152,7 @@ impl Parser {
     }
 
     binary_op! {
-        parse_factor: parse_term {
+        parse_factor: parse_call {
             Star => BinaryOperator::Star,
             Slash => BinaryOperator::Slash,
         }
