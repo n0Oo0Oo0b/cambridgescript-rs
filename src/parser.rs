@@ -91,8 +91,16 @@ impl Parser {
         unimplemented!()
     }
 
-        unimplemented!()
     fn parse_call(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
+        let mut left = self.parse_primary(tokens)?;
+        while let Some(TokenType::LParen) = tokens.next() {
+            left = Expr::FunctionCall {
+                function: Box::new(left),
+                args: vec![],
+            };
+            self.consume(tokens, TokenType::RParen)?;
+        }
+        Ok(left)
     }
 
     fn parse_primary(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
