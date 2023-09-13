@@ -35,8 +35,8 @@ impl TokenBuffer {
         res
     }
 
-    fn next_if_equal(&mut self, other: TokenType) -> Option<TokenType> {
-        if self.peek()? == other {
+    fn next_if_equal(&mut self, other: &TokenType) -> Option<TokenType> {
+        if &self.peek()? == other {
             self.next()
         } else {
             None
@@ -88,8 +88,8 @@ impl Parser {
         }
     }
 
-    fn consume(&mut self, tokens: &mut TokenBuffer, type_: TokenType) -> Result<(), ParserError> {
-        let next_token: TokenType = match tokens.next() {
+    fn consume(&mut self, tokens: &mut TokenBuffer, type_: &TokenType) -> Result<(), ParserError> {
+        let next_token = &match tokens.next() {
             Some(t) => t,
             None => return Err(ParserError::UnexpectedEOF),
         };
@@ -123,7 +123,7 @@ impl Parser {
     }
 
     fn parse_logic_not(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        if tokens.next_if_equal(TokenType::Not).is_some() {
+        if tokens.next_if_equal(&TokenType::Not).is_some() {
             Ok(Expr::Unary {
                 operator: UnaryOperator::LogicNot,
                 right: Box::new(self.parse_logic_not(tokens)?),
@@ -174,7 +174,7 @@ impl Parser {
     }
 
     fn parse_primary(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        let next_token: TokenType = match tokens.next() {
+        let next_token = match tokens.next() {
             Some(t) => t,
             None => return Err(ParserError::UnexpectedEOF),
         };
@@ -189,7 +189,7 @@ impl Parser {
             TokenType::BooleanLiteral(b) => Expr::Literal(Literal::Boolean(b)),
             TokenType::LParen => {
                 let inner = self.parse_expression(tokens)?;
-                self.consume(tokens, TokenType::RParen)?;
+                self.consume(tokens, &TokenType::RParen)?;
                 inner
             }
             _ => {
