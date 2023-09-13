@@ -45,7 +45,7 @@ impl TokenBuffer {
 }
 
 impl FromIterator<Token> for TokenBuffer {
-    fn from_iter<T: IntoIterator<Item=Token>>(iter: T) -> Self {
+    fn from_iter<T: IntoIterator<Item = Token>>(iter: T) -> Self {
         TokenBuffer {
             items: iter.into_iter().collect(),
             current: 0,
@@ -89,17 +89,21 @@ macro_rules! comma_separated {
                 match $tokens.peek() {
                     Some(TokenType::$end) => {
                         $tokens.next();
-                        break Ok(right)
+                        break Ok(right);
                     }
-                    Some(TokenType::Comma) => { $tokens.next(); },
-                    Some(_) => break Err(ParserError::UnexpectedToken(
-                        $tokens.current_token().unwrap().clone()
-                    )),
+                    Some(TokenType::Comma) => {
+                        $tokens.next();
+                    }
+                    Some(_) => {
+                        break Err(ParserError::UnexpectedToken(
+                            $tokens.current_token().unwrap().clone(),
+                        ))
+                    }
                     None => break Err(ParserError::UnexpectedEOF),
                 }
             }
         }
-    }
+    };
 }
 
 struct Parser {
@@ -194,7 +198,7 @@ impl Parser {
                     let right = comma_separated!(self.parse_expression(tokens): RParen)?;
                     Expr::FunctionCall {
                         function: Box::new(left),
-                        args: right
+                        args: right,
                     }
                 }
                 Some(TokenType::LBracket) => {
@@ -249,7 +253,7 @@ impl Parser {
     }
 }
 
-pub fn parse_expression(tokens: impl IntoIterator<Item=Token>) -> Result<Expr, ParserError> {
+pub fn parse_expression(tokens: impl IntoIterator<Item = Token>) -> Result<Expr, ParserError> {
     let mut buf = TokenBuffer::from_iter(tokens);
     let mut parser = Parser::new();
     parser.parse_expression(&mut buf)
