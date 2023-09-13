@@ -77,6 +77,31 @@ macro_rules! binary_op {
     }
 }
 
+macro_rules! comma_separated {
+    ($self:ident.$name:ident($tokens:expr): $end:ident) => {
+        'comma_sep: {
+            if $tokens.next_if_equal(&TokenType::$end).is_some() {
+                break 'comma_sep Ok(Vec::new());
+            }
+            let mut right = Vec::new();
+            loop {
+                right.push($self.$name($tokens)?);
+                match $tokens.peek() {
+                    Some(TokenType::$end) => {
+                        $tokens.next();
+                        break Ok(right)
+                    }
+                    Some(TokenType::Comma) => { $tokens.next(); },
+                    Some(_) => break Err(ParserError::UnexpectedToken(
+                        $tokens.current_token().unwrap().clone()
+                    )),
+                    None => break Err(ParserError::UnexpectedEOF),
+                }
+            }
+        }
+    }
+}
+
 struct Parser {
     identifier_map: HashMap<Rc<str>, usize>,
 }
@@ -162,13 +187,26 @@ impl Parser {
 
     fn parse_call(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         let mut left = self.parse_primary(tokens)?;
-        while let Some(TokenType::LParen) = tokens.peek() {
-            tokens.next();
-            left = Expr::FunctionCall {
-                function: Box::new(left),
-                args: vec![],
+        loop {
+            left = match tokens.peek() {
+                Some(TokenType::LParen) => {
+                    tokens.next();
+                    let right = comma_separated!(self.parse_expression(tokens): RParen)?;
+                    Expr::FunctionCall {
+                        function: Box::new(left),
+                        args: right
+                    }
+                }
+                Some(TokenType::LBracket) => {
+                    tokens.next();
+                    let right = comma_separated!(self.parse_expression(tokens): RBracket)?;
+                    Expr::ArrayIndex {
+                        array: Box::new(left),
+                        indexes: right,
+                    }
+                }
+                _ => break,
             };
-            self.consume(tokens, TokenType::RParen)?;
         }
         Ok(left)
     }
