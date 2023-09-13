@@ -184,8 +184,6 @@ impl Parser {
         parse_factor: parse_call {
             Star => BinaryOperator::Star,
             Slash => BinaryOperator::Slash,
-            Div => BinaryOperator::Div,
-            Mod => BinaryOperator::Mod,
         }
     }
 
