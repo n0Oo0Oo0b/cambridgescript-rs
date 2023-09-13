@@ -35,6 +35,21 @@ impl TokenBuffer {
         res
     }
 
+    fn consume(&mut self, type_: &TokenType) -> Result<(), ParserError> {
+        let next_token = &match self.peek() {
+            Some(t) => t,
+            None => return Err(ParserError::UnexpectedEOF),
+        };
+        if next_token == type_ {
+            self.next();
+            Ok(())
+        } else {
+            Err(ParserError::UnexpectedToken(
+                self.current_token().unwrap().clone(),
+            ))
+        }
+    }
+
     fn next_if_equal(&mut self, other: &TokenType) -> Option<TokenType> {
         if &self.peek()? == other {
             self.next()
@@ -117,20 +132,6 @@ impl Parser {
         }
     }
 
-    fn consume(&mut self, tokens: &mut TokenBuffer, type_: &TokenType) -> Result<(), ParserError> {
-        let next_token = &match tokens.next() {
-            Some(t) => t,
-            None => return Err(ParserError::UnexpectedEOF),
-        };
-        if next_token == type_ {
-            Ok(())
-        } else {
-            Err(ParserError::UnexpectedToken(
-                tokens.current_token().unwrap().clone(),
-            ))
-        }
-    }
-
     fn parse_block(&mut self, tokens: &mut TokenBuffer) -> Vec<Stmt> {
         unimplemented!()
     }
@@ -152,7 +153,7 @@ impl Parser {
     }
 
     fn parse_logic_not(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        if tokens.next_if_equal(&TokenType::Not).is_some() {
+        if tokens.consume(&TokenType::Not).is_ok() {
             Ok(Expr::Unary {
                 operator: UnaryOperator::LogicNot,
                 right: Box::new(self.parse_logic_not(tokens)?),
@@ -229,7 +230,7 @@ impl Parser {
             TokenType::BooleanLiteral(b) => Expr::Literal(Literal::Boolean(b)),
             TokenType::LParen => {
                 let inner = self.parse_expression(tokens)?;
-                self.consume(tokens, &TokenType::RParen)?;
+                tokens.consume(&TokenType::RParen)?;
                 inner
             }
             _ => {
