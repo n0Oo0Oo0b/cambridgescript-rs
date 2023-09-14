@@ -149,12 +149,12 @@ impl Parser {
         }
     }
 
-    fn parse_block(&mut self, tokens: &mut TokenBuffer) -> Vec<Stmt> {
-        let mut res = Vec::new();
+    fn parse_block(&mut self, tokens: &mut TokenBuffer) -> Block {
+        let mut contents = Vec::new();
         while let Ok(stmt) = self.parse_stmt(tokens) {
-            res.push(stmt);
+            contents.push(stmt);
         }
-        res
+        Block { contents }
     }
 
     fn parse_stmt(&mut self, tokens: &mut TokenBuffer) -> Result<Stmt, ParserError> {
@@ -333,7 +333,7 @@ pub fn parse_statement(tokens: impl IntoIterator<Item = Token>) -> Result<Stmt, 
 }
 
 
-pub fn parse_block(tokens: impl IntoIterator<Item = Token>) -> Vec<Stmt> {
+pub fn parse_block(tokens: impl IntoIterator<Item = Token>) -> Block {
     let mut buf = TokenBuffer::from_iter(tokens);
     let mut parser = Parser::new();
     parser.parse_block(&mut buf)
