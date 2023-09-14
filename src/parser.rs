@@ -93,7 +93,22 @@ macro_rules! binary_op {
 }
 
 macro_rules! comma_separated {
-    ($self:ident.$name:ident($tokens:expr): $end:ident) => {
+    ($self:ident.$name:ident($tokens:expr)) => {
+        {
+            let mut right = Vec::new();
+            loop {
+                right.push($self.$name($tokens)?);
+                match $tokens.peek() {
+                    Some(TokenType::Comma) => {
+                        $tokens.next();
+                    }
+                    Some(_) => break Ok(right),
+                    None => break Err(ParserError::UnexpectedEOF),
+                }
+            }
+        }
+    };
+    ($self:ident.$name:ident($tokens:expr), $end:ident) => {
         'comma_sep: {
             if $tokens.next_if_equal(&TokenType::$end).is_some() {
                 break 'comma_sep Ok(Vec::new());
@@ -194,7 +209,7 @@ impl Parser {
             left = match tokens.peek() {
                 Some(TokenType::LParen) => {
                     tokens.next();
-                    let right = comma_separated!(self.parse_expression(tokens): RParen)?;
+                    let right = comma_separated!(self.parse_expression(tokens), RParen)?;
                     Expr::FunctionCall {
                         function: Box::new(left),
                         args: right,
@@ -202,7 +217,7 @@ impl Parser {
                 }
                 Some(TokenType::LBracket) => {
                     tokens.next();
-                    let right = comma_separated!(self.parse_expression(tokens): RBracket)?;
+                    let right = comma_separated!(self.parse_expression(tokens), RBracket)?;
                     Expr::ArrayIndex {
                         array: Box::new(left),
                         indexes: right,
