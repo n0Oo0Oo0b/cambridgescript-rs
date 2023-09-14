@@ -14,6 +14,12 @@ struct TokenBuffer {
     current: usize,
 }
 
+macro_rules! unexpected_token {
+    ($tokens:expr) => {
+        Err(ParserError::UnexpectedToken($tokens.current_token().unwrap().clone()))
+    };
+}
+
 impl TokenBuffer {
     fn current_token(&self) -> Option<&Token> {
         if self.current < self.items.len() {
@@ -44,9 +50,7 @@ impl TokenBuffer {
             self.next();
             Ok(())
         } else {
-            Err(ParserError::UnexpectedToken(
-                self.current_token().unwrap().clone(),
-            ))
+            unexpected_token!(self)
         }
     }
 
@@ -127,9 +131,7 @@ macro_rules! comma_separated {
                     Some(TokenType::Comma) => {}
                     Some(_) => {
                         $tokens.backtrack();
-                        break Err(ParserError::UnexpectedToken(
-                            $tokens.current_token().unwrap().clone(),
-                        ));
+                        break unexpected_token!($tokens);
                     }
                     None => break Err(ParserError::UnexpectedEOF),
                 }
@@ -223,9 +225,7 @@ impl Parser {
             Some(TokenType::Array) => { unimplemented!() }
             Some(_) => {
                 tokens.backtrack();
-                Err(ParserError::UnexpectedToken(
-                    tokens.current_token().unwrap().clone(),
-                ))
+                unexpected_token!(tokens)
             }
             None => Err(ParserError::UnexpectedEOF),
         }
@@ -331,9 +331,7 @@ impl Parser {
             }
             _ => {
                 tokens.backtrack();
-                return Err(ParserError::UnexpectedToken(
-                    tokens.current_token().unwrap().clone(),
-                ));
+                return unexpected_token!(tokens);
             }
         };
         Ok(expr)
