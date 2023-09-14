@@ -313,3 +313,16 @@ pub fn parse_expression(tokens: impl IntoIterator<Item = Token>) -> Result<Expr,
     let mut parser = Parser::new();
     parser.parse_expression(&mut buf)
 }
+
+pub fn parse_statement(tokens: impl IntoIterator<Item = Token>) -> Result<Stmt, ParserError> {
+    let mut buf = TokenBuffer::from_iter(tokens);
+    let mut parser = Parser::new();
+    parser.parse_stmt(&mut buf)
+}
+
+
+pub fn parse_block(tokens: impl IntoIterator<Item = Token>) -> Vec<Stmt> {
+    let mut buf = TokenBuffer::from_iter(tokens);
+    let mut parser = Parser::new();
+    parser.parse_block(&mut buf)
+}
