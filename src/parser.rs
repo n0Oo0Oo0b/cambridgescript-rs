@@ -190,7 +190,15 @@ impl Parser {
                 let type_ = self.parse_type(tokens)?;
                 Stmt::VariableDecl { name, type_ }
             }
-            TokenType::Constant => unimplemented!(),
+            TokenType::Constant => {
+                let name = self.parse_primary(tokens)?;
+                tokens.consume(&TokenType::LArrow)?;
+                let value = match self.parse_primary(tokens)? {
+                    Expr::Literal(l) => l,
+                    _ => return unexpected_token!(tokens),
+                };
+                Stmt::ConstantDecl { name, value }
+            },
             TokenType::Input => {
                 Stmt::Input(comma_separated!(self.parse_expression(tokens), tokens)?)
             }
