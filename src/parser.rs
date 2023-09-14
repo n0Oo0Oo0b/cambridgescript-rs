@@ -292,8 +292,8 @@ impl Parser {
                 }
                 _ => {
                     tokens.backtrack();
-                    break
-                },
+                    break;
+                }
             };
         }
         Ok(left)
@@ -322,7 +322,7 @@ impl Parser {
                 tokens.backtrack();
                 return Err(ParserError::UnexpectedToken(
                     tokens.current_token().unwrap().clone(),
-                ))
+                ));
             }
         };
         Ok(expr)
