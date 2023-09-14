@@ -57,6 +57,12 @@ impl TokenBuffer {
             None
         }
     }
+
+    fn backtrack(&mut self) {
+        if self.current > 0 {
+            self.current -= 1;
+        }
+    }
 }
 
 impl FromIterator<Token> for TokenBuffer {
@@ -114,15 +120,13 @@ macro_rules! comma_separated {
             let mut right = Vec::new();
             loop {
                 right.push($self.$name($tokens)?);
-                match $tokens.peek() {
+                match $tokens.next() {
                     Some(TokenType::$end) => {
-                        $tokens.next();
                         break Ok(right);
                     }
-                    Some(TokenType::Comma) => {
-                        $tokens.next();
-                    }
+                    Some(TokenType::Comma) => {}
                     Some(_) => {
+                        $tokens.backtrack();
                         break Err(ParserError::UnexpectedToken(
                             $tokens.current_token().unwrap().clone(),
                         ))
@@ -150,7 +154,7 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self, tokens: &mut TokenBuffer) -> Result<Stmt, ParserError> {
-        let next_token = match tokens.peek() {
+        let next_token = match tokens.next() {
             Some(t) => t,
             None => return Err(ParserError::UnexpectedEOF),
         };
@@ -165,6 +169,7 @@ impl Parser {
             TokenType::While => unimplemented!(),
             TokenType::Declare => {
                 let name = self.parse_primary(tokens)?;
+                tokens.consume(&TokenType::Colon)?;
                 let type_ = self.parse_type(tokens)?;
                 Stmt::VariableDecl { name, type_ }
             }
@@ -179,6 +184,7 @@ impl Parser {
             TokenType::Read => unimplemented!(),
             TokenType::Write => unimplemented!(),
             _ => {
+                tokens.backtrack();
                 let target = self.parse_assignable(tokens)?;
                 tokens.consume(&TokenType::LArrow)?;
                 let value = self.parse_expression(tokens)?;
@@ -247,9 +253,8 @@ impl Parser {
     fn parse_call(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         let mut left = self.parse_primary(tokens)?;
         loop {
-            left = match tokens.peek() {
+            left = match tokens.next() {
                 Some(TokenType::LParen) => {
-                    tokens.next();
                     let right = comma_separated!(self.parse_expression(tokens), RParen)?;
                     Expr::FunctionCall {
                         function: Box::new(left),
@@ -257,14 +262,16 @@ impl Parser {
                     }
                 }
                 Some(TokenType::LBracket) => {
-                    tokens.next();
                     let right = comma_separated!(self.parse_expression(tokens), RBracket)?;
                     Expr::ArrayIndex {
                         array: Box::new(left),
                         indexes: right,
                     }
                 }
-                _ => break,
+                _ => {
+                    tokens.backtrack();
+                    break
+                },
             };
         }
         Ok(left)
@@ -290,6 +297,7 @@ impl Parser {
                 inner
             }
             _ => {
+                tokens.backtrack();
                 return Err(ParserError::UnexpectedToken(
                     tokens.current_token().unwrap().clone(),
                 ))
