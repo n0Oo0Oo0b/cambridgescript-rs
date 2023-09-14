@@ -99,10 +99,10 @@ macro_rules! binary_op {
 }
 
 macro_rules! comma_separated {
-    ($self:ident.$name:ident($tokens:expr)) => {{
+    ($getter:expr, $tokens:expr) => {{
         let mut right = Vec::new();
         loop {
-            right.push($self.$name($tokens)?);
+            right.push($getter?);
             match $tokens.peek() {
                 Some(TokenType::Comma) => {
                     $tokens.next();
@@ -112,14 +112,14 @@ macro_rules! comma_separated {
             }
         }
     }};
-    ($self:ident.$name:ident($tokens:expr), $end:ident) => {
+    ($getter:expr, $tokens:expr; $end:ident) => {
         'comma_sep: {
             if $tokens.next_if_equal(&TokenType::$end).is_some() {
                 break 'comma_sep Ok(Vec::new());
             }
             let mut right = Vec::new();
             loop {
-                right.push($self.$name($tokens)?);
+                right.push($getter?);
                 match $tokens.next() {
                     Some(TokenType::$end) => {
                         break Ok(right);
@@ -129,7 +129,7 @@ macro_rules! comma_separated {
                         $tokens.backtrack();
                         break Err(ParserError::UnexpectedToken(
                             $tokens.current_token().unwrap().clone(),
-                        ))
+                        ));
                     }
                     None => break Err(ParserError::UnexpectedEOF),
                 }
@@ -178,8 +178,12 @@ impl Parser {
                 Stmt::VariableDecl { name, type_ }
             }
             TokenType::Constant => unimplemented!(),
-            TokenType::Input => Stmt::Input(comma_separated!(self.parse_expression(tokens))?),
-            TokenType::Output => Stmt::Output(comma_separated!(self.parse_expression(tokens))?),
+            TokenType::Input => {
+                Stmt::Input(comma_separated!(self.parse_expression(tokens), tokens)?)
+            }
+            TokenType::Output => {
+                Stmt::Output(comma_separated!(self.parse_expression(tokens), tokens)?)
+            }
             TokenType::Call => unimplemented!(),
             TokenType::OpenFile => unimplemented!(),
             TokenType::ReadFile => unimplemented!(),
@@ -259,14 +263,14 @@ impl Parser {
         loop {
             left = match tokens.next() {
                 Some(TokenType::LParen) => {
-                    let right = comma_separated!(self.parse_expression(tokens), RParen)?;
+                    let right = comma_separated!(self.parse_expression(tokens), tokens; RParen)?;
                     Expr::FunctionCall {
                         function: Box::new(left),
                         args: right,
                     }
                 }
                 Some(TokenType::LBracket) => {
-                    let right = comma_separated!(self.parse_expression(tokens), RBracket)?;
+                    let right = comma_separated!(self.parse_expression(tokens), tokens; RBracket)?;
                     Expr::ArrayIndex {
                         array: Box::new(left),
                         indexes: right,
@@ -331,7 +335,6 @@ pub fn parse_statement(tokens: impl IntoIterator<Item = Token>) -> Result<Stmt, 
     let mut parser = Parser::new();
     parser.parse_stmt(&mut buf)
 }
-
 
 pub fn parse_block(tokens: impl IntoIterator<Item = Token>) -> Block {
     let mut buf = TokenBuffer::from_iter(tokens);
