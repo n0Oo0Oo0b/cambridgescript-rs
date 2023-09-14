@@ -81,11 +81,11 @@ pub enum Stmt {
 
 #[derive(Debug)]
 pub struct Block {
-    contents: Vec<Stmt>,
+    pub contents: Vec<Stmt>,
 }
 
 #[derive(Debug)]
 pub struct Parameter {
-    name: Expr,
-    type_: Type,
+    pub name: Expr,
+    pub type_: Type,
 }

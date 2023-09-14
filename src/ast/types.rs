@@ -17,6 +17,6 @@ pub enum PrimitiveType {
 
 #[derive(Debug)]
 pub struct ArrayType {
-    inner_type: PrimitiveType,
-    ranges: Vec<(Expr, Expr)>,
+    pub inner_type: PrimitiveType,
+    pub ranges: Vec<(Expr, Expr)>,
 }
