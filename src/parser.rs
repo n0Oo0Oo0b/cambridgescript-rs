@@ -169,8 +169,19 @@ impl Parser {
             TokenType::Return => Stmt::Return(self.parse_expression(tokens)?),
             TokenType::Case => unimplemented!(),
             TokenType::For => unimplemented!(),
-            TokenType::Repeat => unimplemented!(),
-            TokenType::While => unimplemented!(),
+            TokenType::Repeat => {
+                let body = self.parse_block(tokens);
+                tokens.consume(&TokenType::Until)?;
+                let condition = self.parse_expression(tokens)?;
+                Stmt::RepeatUntil { condition, body }
+            }
+            TokenType::While => {
+                let condition = self.parse_expression(tokens)?;
+                tokens.consume(&TokenType::Do)?;
+                let body = self.parse_block(tokens);
+                tokens.consume(&TokenType::EndWhile)?;
+                Stmt::While { condition, body }
+            }
             TokenType::Declare => {
                 let name = self.parse_primary(tokens)?;
                 tokens.consume(&TokenType::Colon)?;
