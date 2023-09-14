@@ -150,7 +150,11 @@ impl Parser {
     }
 
     fn parse_block(&mut self, tokens: &mut TokenBuffer) -> Vec<Stmt> {
-        unimplemented!()
+        let mut res = Vec::new();
+        while let Ok(stmt) = self.parse_stmt(tokens) {
+            res.push(stmt);
+        }
+        res
     }
 
     fn parse_stmt(&mut self, tokens: &mut TokenBuffer) -> Result<Stmt, ParserError> {
