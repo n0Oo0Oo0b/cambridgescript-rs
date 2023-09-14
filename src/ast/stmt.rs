@@ -6,6 +6,7 @@ pub enum FileMode {
     Write,
 }
 
+#[derive(Debug)]
 pub enum Stmt {
     ProcedureDecl {
         name: Expr,
@@ -78,10 +79,12 @@ pub enum Stmt {
     },
 }
 
+#[derive(Debug)]
 pub struct Block {
     contents: Vec<Stmt>,
 }
 
+#[derive(Debug)]
 pub struct Parameter {
     name: Expr,
     type_: Type,
