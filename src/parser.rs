@@ -152,11 +152,60 @@ impl Parser {
     }
 
     fn parse_stmt(&mut self, tokens: &mut TokenBuffer) -> Result<Stmt, ParserError> {
+        let next_token = match tokens.peek() {
+            Some(t) => t,
+            None => return Err(ParserError::UnexpectedEOF),
+        };
+        let res = match next_token {
+            TokenType::Procedure => unimplemented!(),
+            TokenType::Function => unimplemented!(),
+            TokenType::If => unimplemented!(),
+            TokenType::Return => Stmt::Return(self.parse_expression(tokens)?),
+            TokenType::Case => unimplemented!(),
+            TokenType::For => unimplemented!(),
+            TokenType::Repeat => unimplemented!(),
+            TokenType::While => unimplemented!(),
+            TokenType::Declare => {
+                let name = self.parse_primary(tokens)?;
+                let type_ = self.parse_type(tokens)?;
+                Stmt::VariableDecl {
+                    name,
+                    type_,
+                }
+            }
+            TokenType::Constant => unimplemented!(),
+            TokenType::Input => Stmt::Input(comma_separated!(self.parse_expression(tokens))?),
+            TokenType::Output => Stmt::Output(comma_separated!(self.parse_expression(tokens))?),
+            TokenType::Call => unimplemented!(),
+            TokenType::OpenFile => unimplemented!(),
+            TokenType::ReadFile => unimplemented!(),
+            TokenType::WriteFile => unimplemented!(),
+            TokenType::CloseFile => unimplemented!(),
+            TokenType::Read => unimplemented!(),
+            TokenType::Write => unimplemented!(),
+            _ => {
+                let target = self.parse_assignable(tokens)?;
+                tokens.consume(&TokenType::LArrow)?;
+                let value = self.parse_expression(tokens)?;
+                Stmt::Assignment {
+                    target,
+                    value,
+                }
+            }
+        };
+        Ok(res)
+    }
+
+    fn parse_type(&mut self, tokens: &mut TokenBuffer) -> Result<Type, ParserError> {
         unimplemented!()
     }
 
     fn parse_expression(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         self.parse_logic_or(tokens)
+    }
+
+    fn parse_assignable(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
+        self.parse_call(tokens)
     }
 
     binary_op! {
