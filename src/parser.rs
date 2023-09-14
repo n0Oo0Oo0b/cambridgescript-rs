@@ -203,7 +203,21 @@ impl Parser {
     }
 
     fn parse_type(&mut self, tokens: &mut TokenBuffer) -> Result<Type, ParserError> {
-        unimplemented!()
+        match tokens.next() {
+            Some(TokenType::Integer) => Ok(Type::Primitive(PrimitiveType::Integer)),
+            Some(TokenType::Real) => Ok(Type::Primitive(PrimitiveType::Real)),
+            Some(TokenType::String) => Ok(Type::Primitive(PrimitiveType::String)),
+            Some(TokenType::Char) => Ok(Type::Primitive(PrimitiveType::Char)),
+            Some(TokenType::Boolean) => Ok(Type::Primitive(PrimitiveType::Boolean)),
+            Some(TokenType::Array) => { unimplemented!() }
+            Some(_) => {
+                tokens.backtrack();
+                Err(ParserError::UnexpectedToken(
+                    tokens.current_token().unwrap().clone(),
+                ))
+            }
+            None => Err(ParserError::UnexpectedEOF),
+        }
     }
 
     fn parse_expression(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
