@@ -93,21 +93,19 @@ macro_rules! binary_op {
 }
 
 macro_rules! comma_separated {
-    ($self:ident.$name:ident($tokens:expr)) => {
-        {
-            let mut right = Vec::new();
-            loop {
-                right.push($self.$name($tokens)?);
-                match $tokens.peek() {
-                    Some(TokenType::Comma) => {
-                        $tokens.next();
-                    }
-                    Some(_) => break Ok(right),
-                    None => break Err(ParserError::UnexpectedEOF),
+    ($self:ident.$name:ident($tokens:expr)) => {{
+        let mut right = Vec::new();
+        loop {
+            right.push($self.$name($tokens)?);
+            match $tokens.peek() {
+                Some(TokenType::Comma) => {
+                    $tokens.next();
                 }
+                Some(_) => break Ok(right),
+                None => break Err(ParserError::UnexpectedEOF),
             }
         }
-    };
+    }};
     ($self:ident.$name:ident($tokens:expr), $end:ident) => {
         'comma_sep: {
             if $tokens.next_if_equal(&TokenType::$end).is_some() {
@@ -168,10 +166,7 @@ impl Parser {
             TokenType::Declare => {
                 let name = self.parse_primary(tokens)?;
                 let type_ = self.parse_type(tokens)?;
-                Stmt::VariableDecl {
-                    name,
-                    type_,
-                }
+                Stmt::VariableDecl { name, type_ }
             }
             TokenType::Constant => unimplemented!(),
             TokenType::Input => Stmt::Input(comma_separated!(self.parse_expression(tokens))?),
@@ -187,10 +182,7 @@ impl Parser {
                 let target = self.parse_assignable(tokens)?;
                 tokens.consume(&TokenType::LArrow)?;
                 let value = self.parse_expression(tokens)?;
-                Stmt::Assignment {
-                    target,
-                    value,
-                }
+                Stmt::Assignment { target, value }
             }
         };
         Ok(res)
