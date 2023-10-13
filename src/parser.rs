@@ -167,7 +167,21 @@ impl Parser {
         let res = match next_token {
             TokenType::Procedure => unimplemented!(),
             TokenType::Function => unimplemented!(),
-            TokenType::If => unimplemented!(),
+            TokenType::If => {
+                let condition = self.parse_expression(tokens)?;
+                tokens.consume(&TokenType::Then)?;
+                let then_branch = self.parse_block(tokens);
+                let else_branch = match tokens.consume(&TokenType::Else) {
+                    Ok(_) => Some(self.parse_block(tokens)),
+                    Err(_) => None
+                };
+                tokens.consume(&TokenType::EndIf)?;
+                Stmt::If {
+                    condition,
+                    then_branch,
+                    else_branch,
+                }
+            },
             TokenType::Return => Stmt::Return(self.parse_expression(tokens)?),
             TokenType::Case => unimplemented!(),
             TokenType::For => unimplemented!(),
