@@ -10,7 +10,7 @@ pub enum TokenType {
     Procedure, EndProcedure,
     Function, Returns, EndFunction, Return,
 
-    If, Then, Else,
+    If, Then, Else, EndIf,
     Case, Otherwise, EndCase,
     For, To, Step, Next,
     Repeat, Until,
@@ -176,6 +176,7 @@ impl<'a> Scanner<'a> {
             "IF" => TokenType::If,
             "THEN" => TokenType::Then,
             "ELSE" => TokenType::Else,
+            "ENDIF" => TokenType::EndIf,
             "CASE" => TokenType::Case,
             "OTHERWISE" => TokenType::Otherwise,
             "ENDCASE" => TokenType::EndCase,
