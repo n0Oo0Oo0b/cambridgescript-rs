@@ -210,8 +210,6 @@ impl Parser {
             TokenType::ReadFile => unimplemented!(),
             TokenType::WriteFile => unimplemented!(),
             TokenType::CloseFile => unimplemented!(),
-            TokenType::Read => unimplemented!(),
-            TokenType::Write => unimplemented!(),
             _ => {
                 tokens.backtrack();
                 let target = self.parse_assignable(tokens)?;
