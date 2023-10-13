@@ -184,7 +184,26 @@ impl Parser {
             },
             TokenType::Return => Stmt::Return(self.parse_expression(tokens)?),
             TokenType::Case => unimplemented!(),
-            TokenType::For => unimplemented!(),
+            TokenType::For => {
+                let target = self.parse_assignable(tokens)?;
+                tokens.consume(&TokenType::LArrow)?;
+                let start = self.parse_expression(tokens)?;
+                tokens.consume(&TokenType::To)?;
+                let end = self.parse_expression(tokens)?;
+                let step = match tokens.consume(&TokenType::Step) {
+                    Ok(_) => Some(self.parse_expression(tokens)?),
+                    Err(_) => None,
+                };
+                let body = self.parse_block(tokens);
+                tokens.consume(&TokenType::Next)?;
+                Stmt::ForLoop {
+                    target,
+                    start,
+                    end,
+                    step,
+                    body,
+                }
+            },
             TokenType::Repeat => {
                 let body = self.parse_block(tokens);
                 tokens.consume(&TokenType::Until)?;
