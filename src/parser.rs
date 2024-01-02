@@ -165,8 +165,31 @@ impl Parser {
             None => return Err(ParserError::UnexpectedEOF),
         };
         let res = match next_token {
-            TokenType::Procedure => unimplemented!(),
-            TokenType::Function => unimplemented!(),
+            TokenType::Procedure => {
+                let name = self.parse_identifier(tokens)?;
+                let params = self.parse_parameter_list(tokens)?;
+                let body = self.parse_block(tokens);
+                tokens.consume(&TokenType::EndProcedure)?;
+                Stmt::ProcedureDecl {
+                    name,
+                    params,
+                    body,
+                }
+            },
+            TokenType::Function => {
+                let name = self.parse_identifier(tokens)?;
+                let params = self.parse_parameter_list(tokens)?;
+                tokens.consume(&TokenType::Returns)?;
+                let return_type = self.parse_type(tokens)?;
+                let body = self.parse_block(tokens);
+                tokens.consume(&TokenType::EndFunction)?;
+                Stmt::FunctionDecl {
+                    name,
+                    params,
+                    return_type,
+                    body,
+                }
+            },
             TokenType::If => {
                 let condition = self.parse_expression(tokens)?;
                 tokens.consume(&TokenType::Then)?;
@@ -272,6 +295,24 @@ impl Parser {
 
     fn parse_expression(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
         self.parse_logic_or(tokens)
+    }
+
+    fn parse_parameter(&mut self, tokens: &mut TokenBuffer) -> Result<Parameter, ParserError> {
+        let name = self.parse_identifier(tokens)?;
+        tokens.consume(&TokenType::Colon)?;
+        let type_ = self.parse_type(tokens)?;
+        Ok(Parameter { name, type_ })
+    }
+
+    fn parse_parameter_list(&mut self, tokens: &mut TokenBuffer) -> Result<Option<Vec<Parameter>>, ParserError> {
+        Ok(match tokens.next_if_equal(&TokenType::LParen) {
+            Some(_) => {
+                let params = comma_separated!(self.parse_parameter(tokens), tokens)?;
+                tokens.consume(&TokenType::RParen)?;
+                Some(params)
+            },
+            None => None,
+        })
     }
 
     fn parse_assignable(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {

@@ -16,6 +16,7 @@ pub enum Stmt {
     FunctionDecl {
         name: Expr,
         params: Option<Vec<Parameter>>,
+        return_type: Type,
         body: Block,
     },
     If {
