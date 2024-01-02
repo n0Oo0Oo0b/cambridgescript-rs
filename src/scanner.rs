@@ -339,3 +339,100 @@ pub fn scan(source: &str) -> (Vec<Token>, Vec<ScannerError>) {
     }
     (tokens, errors)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scan_single_token(source: &str) -> Result<Token, ScannerError> {
+        let mut scanner = Scanner::from_source(source);
+        scanner.scan_next().unwrap()
+    }
+
+    macro_rules! assert_token_type {
+        ($source: literal, $type_:expr) => {
+            {
+                let token = scan_single_token($source)?;
+                assert_eq!(token.type_, $type_);
+            }
+        };
+    }
+
+    #[test]
+    fn keyword_token() -> Result<(), ScannerError> {
+        assert_token_type!("DECLARE", TokenType::Declare);
+        assert_token_type!("ENDIF", TokenType::EndIf);
+        Ok(())
+    }
+
+    #[test]
+    fn symbol_tokens() -> Result<(), ScannerError> {
+        assert_token_type!("(", TokenType::LParen);
+        assert_token_type!("<", TokenType::Less);
+        assert_token_type!("<=", TokenType::LessEqual);
+        assert_token_type!("<>", TokenType::NotEqual);
+        assert_token_type!("-", TokenType::Minus);
+        Ok(())
+    }
+
+    #[test]
+    fn identifier_token() -> Result<(), ScannerError> {
+        assert_token_type!("foo", TokenType::Identifier(Rc::from("foo")));
+        Ok(())
+    }
+
+    #[test]
+    fn char_literal_token() -> Result<(), ScannerError> {
+        assert_token_type!("'c'", TokenType::CharLiteral('c'));
+        assert_token_type!(r#"'"'"#, TokenType::CharLiteral('"'));
+        assert_token_type!(r"'\'", TokenType::CharLiteral('\\'));
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_char_literal() {
+        assert!(matches!(scan_single_token("''"), Err(ScannerError::InvalidCharLiteral(_))));
+        assert!(matches!(scan_single_token("'abc'"), Err(ScannerError::InvalidCharLiteral(_))));
+    }
+
+    #[test]
+    fn string_literal_token() -> Result<(), ScannerError> {
+        assert_token_type!(r#""hello world""#, TokenType::StringLiteral(Rc::from("hello world")));
+        assert_token_type!(r#""\n\r\b""#, TokenType::StringLiteral(Rc::from(r"\n\r\b")));
+        assert_token_type!(r#""\""#, TokenType::StringLiteral(Rc::from(r"\")));
+        Ok(())
+    }
+
+    #[test]
+    fn unterminated_string_literal() {
+        assert!(matches!(scan_single_token(r#""hello"#), Err(ScannerError::UnterminatedString(_))))
+    }
+
+    #[test]
+    fn integer_literal_token() -> Result<(), ScannerError> {
+        assert_token_type!("42", TokenType::IntegerLiteral(42));
+        assert_token_type!("-5", TokenType::IntegerLiteral(-5));
+        Ok(())
+    }
+
+    #[test]
+    fn real_literal_token() -> Result<(), ScannerError> {
+        assert_token_type!("0.6", TokenType::RealLiteral(0.6));
+        assert_token_type!("13.0", TokenType::RealLiteral(13.0));
+        assert_token_type!("-2.5", TokenType::RealLiteral(-2.5));
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_real_literal() {
+        assert!(matches!(scan_single_token("2."), Err(ScannerError::InvalidRealLiteral(_))));
+        assert!(scan_single_token(".5").is_err());
+    }
+
+    #[test]
+    fn boolean_literal_token() -> Result<(), ScannerError> {
+        assert_token_type!("TRUE", TokenType::BooleanLiteral(true));
+        assert_token_type!("FALSE", TokenType::BooleanLiteral(false));
+        Ok(())
+    }
+}
