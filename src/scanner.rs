@@ -98,7 +98,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn check_next(&mut self, condition: &dyn Fn(&char) -> bool) -> bool {
+    fn check_next(&mut self, condition: &impl Fn(&char) -> bool) -> bool {
         match self.source.peek() {
             Some(&c) => condition(&c),
             None => false,
@@ -126,7 +126,7 @@ impl<'a> Scanner<'a> {
         result
     }
 
-    fn advance_while(&mut self, condition: &dyn Fn(&char) -> bool) {
+    fn advance_while(&mut self, condition: &impl Fn(&char) -> bool) {
         while self.check_next(condition) {
             self.advance();
         }
