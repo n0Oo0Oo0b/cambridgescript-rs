@@ -218,13 +218,13 @@ impl Parser {
                 Stmt::While { condition, body }
             }
             TokenType::Declare => {
-                let name = self.parse_primary(tokens)?;
+                let name = self.parse_identifier(tokens)?;
                 tokens.consume(&TokenType::Colon)?;
                 let type_ = self.parse_type(tokens)?;
                 Stmt::VariableDecl { name, type_ }
             }
             TokenType::Constant => {
-                let name = self.parse_primary(tokens)?;
+                let name = self.parse_identifier(tokens)?;
                 tokens.consume(&TokenType::LArrow)?;
                 let value = match self.parse_primary(tokens)? {
                     Expr::Literal(l) => l,
@@ -374,6 +374,14 @@ impl Parser {
             }
         };
         Ok(expr)
+    }
+
+    fn parse_identifier(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
+        let expr = self.parse_primary(tokens)?;
+        match expr {
+            Expr::Identifier { .. } => {Ok(expr)},
+            _ => unexpected_token!(tokens),
+        }
     }
 
     fn get_ident_handle(&mut self, ident: Rc<str>) -> usize {
