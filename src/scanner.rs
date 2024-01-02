@@ -70,6 +70,7 @@ impl Location {
 
 #[derive(Debug)]
 pub enum ScannerError {
+    InvalidCharLiteral(Location),
     UnterminatedString(Location),
     InvalidRealLiteral(Location),
     UnexpectedCharacter(char, Location),
@@ -147,10 +148,10 @@ impl<'a> Scanner<'a> {
     fn char(&mut self) -> Result<TokenType, ScannerError> {
         let c = match self.advance() {
             Some(c) => c,
-            None => return Err(ScannerError::UnterminatedString(self.cur_location)),
+            None => return Err(ScannerError::InvalidCharLiteral(self.cur_location)),
         };
         if !self.advance_if_match('\'') {
-            return Err(ScannerError::UnterminatedString(self.cur_location));
+            return Err(ScannerError::InvalidCharLiteral(self.cur_location));
         }
         Ok(TokenType::CharLiteral(c))
     }
