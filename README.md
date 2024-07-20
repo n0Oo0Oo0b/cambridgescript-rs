@@ -1,3 +1,3 @@
-# cambridgescript-rust
+# cambridgescript-rs
 
 Rust implementation of [CambridgeScript](https://github.com/n0Oo0Oo0b/pseudo-interpreter)
