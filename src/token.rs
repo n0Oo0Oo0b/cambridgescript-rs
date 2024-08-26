@@ -1,4 +1,4 @@
-use std::{boxed::Box, marker::PhantomData};
+use std::boxed::Box;
 
 #[rustfmt::skip]
 #[derive(Clone, Debug, PartialEq)]
@@ -52,10 +52,17 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
-    pub fn new(type_: TokenType, lexeme: &'a str) -> Self {
+    pub fn with_lexeme(type_: TokenType, lexeme: &'a str) -> Self {
         Self {
             type_,
             lexeme: Some(lexeme),
+        }
+    }
+
+    pub fn without_lexeme(type_: TokenType) -> Self {
+        Self {
+            type_,
+            lexeme: None,
         }
     }
 }
@@ -63,9 +70,6 @@ impl<'a> Token<'a> {
 impl From<TokenType> for Token<'_> {
     // Allow manual creation of Tokens without a source string
     fn from(value: TokenType) -> Self {
-        Self {
-            type_: value,
-            lexeme: None,
-        }
+        Self::without_lexeme(value)
     }
 }

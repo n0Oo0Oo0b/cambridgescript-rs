@@ -3,8 +3,11 @@
 use std::io;
 use std::io::prelude::*;
 
-// mod ast;
-// mod parser;
+use parser::{Parser, TokenTypeExtractor};
+
+mod ast;
+mod interpreter;
+mod parser;
 mod scanner;
 mod token;
 
@@ -13,9 +16,20 @@ fn main() {
     io::stdin().read_to_string(&mut input).unwrap();
 
     let s = scanner::iter_tokens(input.as_str());
-    for t in s {
-        let _ = dbg!(t);
-    }
+    let tokens = TokenTypeExtractor::new(s.map(|t| dbg!(t)));
+    let res = Parser::new(tokens).parse_expr();
+    dbg!(&res);
+
+    // let tokens = vec![
+    //     TokenType::Not,
+    //     TokenType::IntegerLiteral(1),
+    //     TokenType::Equal,
+    //     TokenType::IntegerLiteral(2),
+    //     TokenType::Star,
+    //     TokenType::IntegerLiteral(2),
+    // ];
+    // let res = Parser::new(tokens.into_iter()).parse_expr();
+    // dbg!(&res);
 
     // let (tokens, errors) = scanner::scan(input.as_str());
     // for token in &tokens {

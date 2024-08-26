@@ -1,35 +1,36 @@
 use std::rc::Rc;
 
 #[derive(Debug)]
-pub enum BinaryOperator {
-    LogicAnd,
-    LogicOr,
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Equal,
-    NotEqual,
-    LessEqual,
-    GreaterEqual,
-    Less,
-    Greater,
+pub enum BinaryOp {
+    And,
+    Or,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Ne,
+    Le,
+    Ge,
+    Lt,
+    Gt,
 }
 
 #[derive(Debug)]
-pub enum UnaryOperator {
-    LogicNot,
+pub enum UnaryOp {
+    Not,
+    Neg,
 }
 
 #[derive(Debug)]
 pub enum Expr {
     Binary {
         left: Box<Expr>,
-        operator: BinaryOperator,
+        op: BinaryOp,
         right: Box<Expr>,
     },
     Unary {
-        operator: UnaryOperator,
+        op: UnaryOp,
         right: Box<Expr>,
     },
     FunctionCall {
@@ -43,11 +44,11 @@ pub enum Expr {
     Identifier {
         handle: usize,
     },
-    Literal(Literal),
+    Literal(Value),
 }
 
 #[derive(Debug)]
-pub enum Literal {
+pub enum Value {
     Char(char),
     String(Rc<str>),
     Integer(i64),

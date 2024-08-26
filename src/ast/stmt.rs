@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Literal, Type};
+use crate::ast::{Expr, Type, Value};
 
 #[derive(Debug)]
 pub enum FileMode {
@@ -10,30 +10,30 @@ pub enum FileMode {
 pub enum Stmt {
     ProcedureDecl {
         name: Expr,
-        params: Option<Vec<Parameter>>,
+        params: Vec<Parameter>,
         body: Block,
     },
     FunctionDecl {
         name: Expr,
-        params: Option<Vec<Parameter>>,
+        params: Vec<Parameter>,
         return_type: Type,
         body: Block,
     },
     If {
         condition: Expr,
         then_branch: Block,
-        else_branch: Option<Block>,
+        else_branch: Block,
     },
     CaseOf {
         condition: Expr,
         cases: Vec<(Expr, Stmt)>,
-        otherwise: Option<Box<Stmt>>,
+        otherwise: Box<Stmt>,
     },
     ForLoop {
         target: Expr,
         start: Expr,
         end: Expr,
-        step: Option<Expr>,
+        step: Expr,
         body: Block,
     },
     RepeatUntil {
@@ -50,29 +50,29 @@ pub enum Stmt {
     },
     ConstantDecl {
         name: Expr,
-        value: Literal,
+        value: Value,
     },
     Input(Vec<Expr>),
     Output(Vec<Expr>),
     Return(Expr),
     FileOpen {
-        file: Literal,
+        file: Value,
         mode: FileMode,
     },
     FileRead {
-        file: Literal,
+        file: Value,
         target: Expr,
     },
     FileWrite {
-        file: Literal,
+        file: Value,
         value: Expr,
     },
     FileClose {
-        file: Literal,
+        file: Value,
     },
     Procedure {
         name: Expr,
-        args: Option<Vec<Expr>>,
+        args: Vec<Expr>,
     },
     Assignment {
         target: Expr,
@@ -81,9 +81,7 @@ pub enum Stmt {
 }
 
 #[derive(Debug)]
-pub struct Block {
-    pub contents: Vec<Stmt>,
-}
+pub struct Block(Vec<Stmt>);
 
 #[derive(Debug)]
 pub struct Parameter {

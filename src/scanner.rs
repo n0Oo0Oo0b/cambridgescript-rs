@@ -10,6 +10,9 @@ pub enum ScannerError<'a> {
     UnexpectedCharacter(char, &'a str),
 }
 
+pub type ScanResult<'a> = Result<Token<'a>, ScannerError<'a>>;
+
+/// Convert
 struct Scanner<'src, 'a>
 where
     'src: 'a,
@@ -51,7 +54,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
 
     #[inline]
     fn make_token(&self, type_: TokenType) -> Token<'src> {
-        Token::new(type_, self.lexeme_contents())
+        Token::with_lexeme(type_, self.lexeme_contents())
     }
 
     fn advance_if_match(&mut self, target: char) -> bool {
@@ -76,7 +79,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
         TokenType::Comment
     }
 
-    fn char(&mut self) -> Result<Token<'src>, ScannerError<'src>> {
+    fn char(&mut self) -> ScanResult<'src> {
         let c = self
             .advance()
             .ok_or(ScannerError::InvalidCharLiteral("hi"))?;
@@ -85,7 +88,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
             .ok_or_else(|| ScannerError::InvalidCharLiteral(self.lexeme_contents()))
     }
 
-    fn string(&mut self) -> Result<Token<'src>, ScannerError<'src>> {
+    fn string(&mut self) -> ScanResult<'src> {
         self.advance_while(|&c| c != '"' && c != '\n');
         self.advance_if_match('"')
             .then(|| {
@@ -149,7 +152,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
         }
     }
 
-    fn number(&mut self) -> Result<Token<'src>, ScannerError<'src>> {
+    fn number(&mut self) -> ScanResult<'src> {
         self.advance_while(char::is_ascii_digit);
         if self.advance_if_match('.') {
             if !self.check_next(char::is_ascii_digit) {
@@ -170,7 +173,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
         TokenType::Whitespace
     }
 
-    fn scan_next(&mut self) -> Option<Result<Token<'src>, ScannerError<'src>>> {
+    fn scan_next(&mut self) -> Option<ScanResult<'src>> {
         self.start = self.current;
         let next_char = self.advance()?;
 
@@ -181,6 +184,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
             ']' => TokenType::RBracket,
             '+' => TokenType::Plus,
             '-' => {
+                // TODO: replace with unary negation operator
                 if self.check_next(char::is_ascii_digit) {
                     return Some(self.number());
                 } else {
@@ -231,20 +235,20 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     }
 }
 
-pub struct TokenStream<'src> {
-    scanner: Scanner<'src, 'src>,
+pub struct TokenStream<'s> {
+    scanner: Scanner<'s, 's>,
 }
 
-impl<'src> Iterator for TokenStream<'src> {
-    type Item = Result<Token<'src>, ScannerError<'src>>;
+impl<'s> Iterator for TokenStream<'s> {
+    type Item = ScanResult<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.scanner.scan_next()
     }
 }
 
-impl<'a> TokenStream<'a> {
-    fn new(s: &'a str) -> Self {
+impl<'s> TokenStream<'s> {
+    fn new(s: &'s str) -> Self {
         Self {
             scanner: Scanner::from_source(s),
         }
@@ -259,7 +263,7 @@ pub fn iter_tokens(source: &str) -> TokenStream {
 mod tests {
     use super::*;
 
-    fn scan_single_token(source: &str) -> Result<Token, ScannerError> {
+    fn scan_single_token(source: &str) -> ScanResult {
         let mut scanner = Scanner::from_source(source);
         scanner.scan_next().unwrap()
     }
