@@ -80,8 +80,8 @@ pub enum Stmt {
     },
 }
 
-#[derive(Debug)]
-pub struct Block(Vec<Stmt>);
+#[derive(Debug, Default)]
+pub struct Block(pub Vec<Stmt>);
 
 #[derive(Debug)]
 pub struct Parameter {

@@ -15,9 +15,9 @@ fn main() {
     let mut input = String::new();
     io::stdin().read_to_string(&mut input).unwrap();
 
-    let s = scanner::iter_tokens(input.as_str());
-    let tokens = TokenTypeExtractor::new(s.map(|t| dbg!(t)));
-    let res = Parser::new(tokens).parse_expr();
+    let s = scanner::iter_tokens(input.as_str()); //.map(|t| dbg!(t));
+    let tokens = TokenTypeExtractor::new(s);
+    let res = Parser::new(tokens).parse_stmt();
     dbg!(&res);
 
     // let tokens = vec![

@@ -32,8 +32,8 @@ impl Precedence {
 type TokenPredicate = fn(&TokenType) -> bool;
 
 type ParseResult<T> = Result<T, &'static str>;
-type PrefixRule<I> = fn(&mut Parser<I>) -> ParseResult<Box<Expr>>;
-type InfixRule<I> = fn(&mut Parser<I>, left: Box<Expr>) -> ParseResult<Box<Expr>>;
+type PrefixRule<I> = fn(&mut Parser<I>) -> ParseResult<Expr>;
+type InfixRule<I> = fn(&mut Parser<I>, left: Box<Expr>) -> ParseResult<Expr>;
 
 /// Parses an iterator of tokens into an AST.
 /// I've tried to separate this from Scanner as much as possible.
@@ -41,15 +41,15 @@ pub struct Parser<I>
 where
     I: Iterator<Item = TokenType>,
 {
-    tokens: Peekable<Filter<I, TokenPredicate>>,
+    tokens: Peekable<I>,
     cur_prec: Precedence,
 }
 
-impl<I> Parser<I>
+impl<J> Parser<Filter<J, TokenPredicate>>
 where
-    I: Iterator<Item = TokenType>,
+    J: Iterator<Item = TokenType>,
 {
-    pub fn new(tokens: I) -> Self {
+    pub fn new(tokens: J) -> Self {
         Self {
             tokens: tokens
                 .filter(Self::token_predicate as TokenPredicate)
@@ -57,11 +57,48 @@ where
             cur_prec: Precedence::None,
         }
     }
+}
 
+impl<'a, J> Parser<Filter<TokenTypeExtractor<'a, J>, TokenPredicate>>
+where
+    J: Iterator<Item = ScanResult<'a>>,
+{
+    pub fn from_scan(tokens: J) -> Self {
+        Self::new(TokenTypeExtractor::new(tokens))
+    }
+}
+
+impl<I> Parser<I>
+where
+    I: Iterator<Item = TokenType>,
+{
     fn token_predicate(token: &TokenType) -> bool {
         !matches!(token, TokenType::Whitespace | TokenType::Comment)
     }
+    #[inline]
+    fn peek(&mut self) -> Option<TokenType> {
+        self.tokens.peek().cloned()
+    }
 
+    #[inline]
+    fn advance(&mut self) -> Option<TokenType> {
+        self.tokens.next()
+    }
+
+    #[inline]
+    fn consume(&mut self, ttype: TokenType) -> Option<TokenType> {
+        if self.peek().map_or(false, |t| t == ttype) {
+            self.advance()
+        } else {
+            None
+        }
+    }
+}
+
+impl<I> Parser<I>
+where
+    I: Iterator<Item = TokenType>,
+{
     #[inline(always)] // Rule tables are only used in parse_precedence
     fn unary_rule(token: TokenType) -> Option<(PrefixRule<I>, Precedence)> {
         use TokenType as TT;
@@ -70,6 +107,7 @@ where
             TT::Minus => (Parser::unary, Precedence::Unary),
             TT::Not => (Parser::unary, Precedence::LogicNot),
             TT::LParen => (Parser::grouping, Precedence::Primary),
+            TT::Identifier(_) => (Parser::ident, Precedence::Primary),
             TT::CharLiteral(_)
             | TT::StringLiteral(_)
             | TT::IntegerLiteral(_)
@@ -97,48 +135,38 @@ where
         })
     }
 
-    #[inline]
-    fn peek(&mut self) -> Option<TokenType> {
-        self.tokens.peek().cloned()
-    }
-
-    #[inline]
-    fn advance(&mut self) -> ParseResult<TokenType> {
-        self.tokens.next().ok_or("Unexpected EOF")
-    }
-
-    #[inline]
-    fn consume(&mut self, ttype: TokenType, message: &'static str) -> ParseResult<()> {
-        (self.advance()? == ttype).then_some(()).ok_or(message)
-    }
-
-    fn literal(&mut self) -> ParseResult<Box<Expr>> {
-        let val = match self.advance()? {
+    fn literal(&mut self) -> ParseResult<Expr> {
+        let val = match self.advance().expect("Literal token") {
             TokenType::IntegerLiteral(i) => Value::Integer(i),
             t => panic!("Invalid literal {t:?}"),
         };
-        Ok(Expr::Literal(val).into())
+        Ok(Expr::Literal(val))
     }
 
-    fn grouping(&mut self) -> ParseResult<Box<Expr>> {
+    fn ident(&mut self) -> ParseResult<Expr> {
+        Ok(Expr::Identifier { handle: 0 })
+    }
+
+    fn grouping(&mut self) -> ParseResult<Expr> {
         // Propagate errors early
         let expr = self.parse_expr()?;
-        self.consume(TokenType::RParen, "Expected ')' after expression")?;
+        self.consume(TokenType::RParen)
+            .ok_or("Expected ')' after expression")?;
         Ok(expr)
     }
 
-    fn unary(&mut self) -> ParseResult<Box<Expr>> {
-        let op = match self.advance()? {
+    fn unary(&mut self) -> ParseResult<Expr> {
+        let op = match self.advance().expect("Unary operator") {
             TokenType::Minus => UnaryOp::Neg,
             TokenType::Not => UnaryOp::Not,
             t => panic!("Invalid unary operator {t:?}"),
         };
-        let right = self.parse_precedence(self.cur_prec.next())?;
-        Ok(Expr::Unary { op, right }.into())
+        let right = Box::new(self.parse_precedence(self.cur_prec.next())?);
+        Ok(Expr::Unary { op, right })
     }
 
-    fn binary(&mut self, left: Box<Expr>) -> ParseResult<Box<Expr>> {
-        let op = match self.advance()? {
+    fn binary(&mut self, left: Box<Expr>) -> ParseResult<Expr> {
+        let op = match self.advance().expect("Binary operator") {
             TokenType::And => BinaryOp::And,
             TokenType::Or => BinaryOp::Or,
             TokenType::Plus => BinaryOp::Add,
@@ -153,13 +181,13 @@ where
             TokenType::Greater => BinaryOp::Gt,
             t => panic!("Invalid binary operator {t:?}"),
         };
-        let right = self.parse_precedence(self.cur_prec.next())?;
-        Ok(Expr::Binary { left, op, right }.into())
+        let right = Box::new(self.parse_precedence(self.cur_prec.next())?);
+        Ok(Expr::Binary { left, op, right })
     }
 
-    fn parse_precedence(&mut self, prec: Precedence) -> ParseResult<Box<Expr>> {
+    fn parse_precedence(&mut self, prec: Precedence) -> ParseResult<Expr> {
         let unary_func: PrefixRule<I>;
-        match self.peek().and_then(Self::unary_rule) {
+        match dbg!(self.peek()).and_then(Self::unary_rule) {
             Some(t) => (unary_func, self.cur_prec) = t,
             None => return Err("Expected expression"),
         };
@@ -172,19 +200,94 @@ where
                 Some(rule) => (binary_func, self.cur_prec) = rule,
                 None => break,
             };
-            res = binary_func(self, res)?;
+            res = binary_func(self, Box::new(res))?;
         }
-        Ok(res)
+        Ok(dbg!(res))
     }
 
-    pub fn parse_expr(&mut self) -> ParseResult<Box<Expr>> {
+    pub fn parse_expr(&mut self) -> ParseResult<Expr> {
         self.parse_precedence(Precedence::LogicOr)
     }
+}
 
-    pub fn parse_stmt(&mut self) -> ParseResult<Box<Stmt>> {
-        match self.peek().ok_or("Expected Statement")? {
-            _ => todo!(),
+impl<I> Parser<I>
+where
+    I: Iterator<Item = TokenType>,
+{
+    fn arguments(&mut self) -> ParseResult<Vec<Expr>> {
+        let mut items = vec![dbg!(self.parse_expr())?];
+        while self.consume(TokenType::Comma).is_some() {
+            items.push(self.parse_expr()?);
         }
+        Ok(items)
+    }
+
+    #[inline]
+    fn if_stmt(&mut self) -> ParseResult<Stmt> {
+        self.consume(TokenType::If).expect("IF");
+        let condition = self.parse_expr()?;
+        self.consume(TokenType::Then)
+            .ok_or("Expected 'THEN' after condition")?;
+        let then_branch = self.parse_block()?;
+        let else_branch = if self.consume(TokenType::Else).is_some() {
+            self.parse_block()?
+        } else {
+            Block::default()
+        };
+        self.consume(TokenType::EndIf).ok_or("Expected 'ENDIF'")?;
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
+    }
+
+    #[inline]
+    fn repeat_until(&mut self) -> ParseResult<Stmt> {
+        self.consume(TokenType::Repeat).expect("REPEAT");
+        let condition = self.parse_expr()?;
+        self.consume(TokenType::Until)
+            .ok_or("Expected 'UNTIL' after condition")?;
+        let body = self.parse_block()?;
+        Ok(Stmt::RepeatUntil { body, condition })
+    }
+
+    pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
+        match self.peek().ok_or("Expected statement")? {
+            TokenType::If => self.if_stmt(),
+            TokenType::While => {
+                self.advance();
+                let condition = self.parse_expr()?;
+                self.consume(TokenType::Do)
+                    .ok_or("Expected 'DO' after condition")?;
+                let body = self.parse_block()?;
+                self.consume(TokenType::EndWhile)
+                    .ok_or("Expected 'ENDWHILE'")?;
+                Ok(Stmt::While { condition, body })
+            }
+            TokenType::Output => {
+                self.advance();
+                Ok(Stmt::Output(self.arguments()?))
+            }
+            TokenType::Input => {
+                self.advance();
+                Ok(Stmt::Input(self.arguments()?))
+            }
+            TokenType::EndIf
+            | TokenType::EndCase
+            | TokenType::EndWhile
+            | TokenType::EndFunction
+            | TokenType::EndProcedure => Err("Unexpected token"),
+            t => todo!("{:?}", t),
+        }
+    }
+
+    pub fn parse_block(&mut self) -> ParseResult<Block> {
+        let mut items = Vec::new();
+        while let Ok(stmt) = self.parse_stmt() {
+            items.push(stmt);
+        }
+        Ok(Block(items))
     }
 }
 

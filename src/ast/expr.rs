@@ -47,7 +47,7 @@ pub enum Expr {
     Literal(Value),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Char(char),
     String(Rc<str>),
