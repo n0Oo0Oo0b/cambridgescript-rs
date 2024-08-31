@@ -4,6 +4,21 @@ use crate::ast::*;
 use crate::scanner::{ScanResult, ScannerError};
 use crate::token::{Token, TokenType};
 
+#[derive(Debug)]
+pub enum ParserError {
+    UnexpectedToken {
+        expected: TokenType,
+        context: &'static str,
+    },
+    UnexpectedEOF {
+        context: &'static str,
+    },
+    ExpectedExpression {
+        context: &'static str,
+    },
+    ExpectedStatement,
+}
+
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
 enum Precedence {
     None,
@@ -31,7 +46,7 @@ impl Precedence {
 
 type TokenPredicate = fn(&TokenType) -> bool;
 
-type ParseResult<T> = Result<T, &'static str>;
+type ParseResult<T> = Result<T, ParserError>;
 type PrefixRule<I> = fn(&mut Parser<I>) -> ParseResult<Expr>;
 type InfixRule<I> = fn(&mut Parser<I>, left: Box<Expr>) -> ParseResult<Expr>;
 
@@ -75,6 +90,7 @@ where
     fn token_predicate(token: &TokenType) -> bool {
         !matches!(token, TokenType::Whitespace | TokenType::Comment)
     }
+
     #[inline]
     fn peek(&mut self) -> Option<TokenType> {
         self.tokens.peek().cloned()
@@ -92,6 +108,15 @@ where
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn force_consume(&mut self, ttype: TokenType, context: &'static str) -> ParseResult<TokenType> {
+        self.consume(ttype.clone())
+            .ok_or(ParserError::UnexpectedToken {
+                expected: ttype,
+                context,
+            })
     }
 }
 
@@ -150,8 +175,7 @@ where
     fn grouping(&mut self) -> ParseResult<Expr> {
         // Propagate errors early
         let expr = self.parse_expr()?;
-        self.consume(TokenType::RParen)
-            .ok_or("Expected ')' after expression")?;
+        self.force_consume(TokenType::RParen, "after expression")?;
         Ok(expr)
     }
 
@@ -161,7 +185,7 @@ where
             TokenType::Not => UnaryOp::Not,
             t => panic!("Invalid unary operator {t:?}"),
         };
-        let right = Box::new(self.parse_precedence(self.cur_prec.next())?);
+        let right = Box::new(self.parse_precedence(self.cur_prec.next(), "after unary operator")?);
         Ok(Expr::Unary { op, right })
     }
 
@@ -181,15 +205,15 @@ where
             TokenType::Greater => BinaryOp::Gt,
             t => panic!("Invalid binary operator {t:?}"),
         };
-        let right = Box::new(self.parse_precedence(self.cur_prec.next())?);
+        let right = Box::new(self.parse_precedence(self.cur_prec.next(), "after binary operator")?);
         Ok(Expr::Binary { left, op, right })
     }
 
-    fn parse_precedence(&mut self, prec: Precedence) -> ParseResult<Expr> {
+    fn parse_precedence(&mut self, prec: Precedence, context: &'static str) -> ParseResult<Expr> {
         let unary_func: PrefixRule<I>;
-        match dbg!(self.peek()).and_then(Self::unary_rule) {
+        match self.peek().and_then(Self::unary_rule) {
             Some(t) => (unary_func, self.cur_prec) = t,
-            None => return Err("Expected expression"),
+            None => return Err(ParserError::ExpectedExpression { context }),
         };
         let mut res = unary_func(self)?;
 
@@ -202,11 +226,11 @@ where
             };
             res = binary_func(self, Box::new(res))?;
         }
-        Ok(dbg!(res))
+        Ok(res)
     }
 
     pub fn parse_expr(&mut self) -> ParseResult<Expr> {
-        self.parse_precedence(Precedence::LogicOr)
+        self.parse_precedence(Precedence::LogicOr, "")
     }
 }
 
@@ -215,7 +239,7 @@ where
     I: Iterator<Item = TokenType>,
 {
     fn arguments(&mut self) -> ParseResult<Vec<Expr>> {
-        let mut items = vec![dbg!(self.parse_expr())?];
+        let mut items = vec![self.parse_expr()?];
         while self.consume(TokenType::Comma).is_some() {
             items.push(self.parse_expr()?);
         }
@@ -226,15 +250,14 @@ where
     fn if_stmt(&mut self) -> ParseResult<Stmt> {
         self.consume(TokenType::If).expect("IF");
         let condition = self.parse_expr()?;
-        self.consume(TokenType::Then)
-            .ok_or("Expected 'THEN' after condition")?;
+        self.force_consume(TokenType::Then, "after IF condition")?;
         let then_branch = self.parse_block()?;
         let else_branch = if self.consume(TokenType::Else).is_some() {
             self.parse_block()?
         } else {
             Block::default()
         };
-        self.consume(TokenType::EndIf).ok_or("Expected 'ENDIF'")?;
+        self.force_consume(TokenType::EndIf, "at the end of the IF statement")?;
         Ok(Stmt::If {
             condition,
             then_branch,
@@ -245,24 +268,21 @@ where
     #[inline]
     fn repeat_until(&mut self) -> ParseResult<Stmt> {
         self.consume(TokenType::Repeat).expect("REPEAT");
-        let condition = self.parse_expr()?;
-        self.consume(TokenType::Until)
-            .ok_or("Expected 'UNTIL' after condition")?;
         let body = self.parse_block()?;
+        self.force_consume(TokenType::Until, "after REPEAT-UNTIL condition")?;
+        let condition = self.parse_expr()?;
         Ok(Stmt::RepeatUntil { body, condition })
     }
 
     pub fn parse_stmt(&mut self) -> ParseResult<Stmt> {
-        match self.peek().ok_or("Expected statement")? {
+        match self.peek().ok_or(ParserError::ExpectedStatement)? {
             TokenType::If => self.if_stmt(),
             TokenType::While => {
                 self.advance();
                 let condition = self.parse_expr()?;
-                self.consume(TokenType::Do)
-                    .ok_or("Expected 'DO' after condition")?;
+                self.force_consume(TokenType::Do, "after WHILE condition")?;
                 let body = self.parse_block()?;
-                self.consume(TokenType::EndWhile)
-                    .ok_or("Expected 'ENDWHILE'")?;
+                self.force_consume(TokenType::EndWhile, "after while loop")?;
                 Ok(Stmt::While { condition, body })
             }
             TokenType::Output => {
@@ -277,7 +297,7 @@ where
             | TokenType::EndCase
             | TokenType::EndWhile
             | TokenType::EndFunction
-            | TokenType::EndProcedure => Err("Unexpected token"),
+            | TokenType::EndProcedure => Err(ParserError::ExpectedStatement),
             t => todo!("{:?}", t),
         }
     }
@@ -289,12 +309,6 @@ where
         }
         Ok(Block(items))
     }
-}
-
-#[derive(Debug)]
-pub enum ParserError {
-    UnexpectedToken(TokenType),
-    UnexpectedEOF,
 }
 
 #[derive(Debug)]
@@ -320,7 +334,7 @@ where
     I: Iterator<Item = ScanResult<'s>>,
 {
     stream: I,
-    previous: Option<Token<'s>>,
+    pub previous: Option<Token<'s>>,
     errors: Vec<CompileError<'s>>,
 }
 

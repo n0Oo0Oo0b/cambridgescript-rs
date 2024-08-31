@@ -1,4 +1,4 @@
-use std::boxed::Box;
+use std::rc::Rc;
 
 #[rustfmt::skip]
 #[derive(Clone, Debug, PartialEq)]
@@ -34,10 +34,10 @@ pub enum TokenType {
 
     // Others
 
-    Identifier(Box<str>),
+    Identifier(Rc<str>),
 
     CharLiteral(char),
-    StringLiteral(Box<str>),
+    StringLiteral(Rc<str>),
     IntegerLiteral(i64),
     RealLiteral(f64),
     BooleanLiteral(bool),
