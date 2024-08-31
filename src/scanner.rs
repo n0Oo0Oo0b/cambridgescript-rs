@@ -235,11 +235,11 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     }
 }
 
-pub struct TokenStream<'s> {
+pub struct ScannerStream<'s> {
     scanner: Scanner<'s, 's>,
 }
 
-impl<'s> Iterator for TokenStream<'s> {
+impl<'s> Iterator for ScannerStream<'s> {
     type Item = ScanResult<'s>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -247,7 +247,7 @@ impl<'s> Iterator for TokenStream<'s> {
     }
 }
 
-impl<'s> TokenStream<'s> {
+impl<'s> ScannerStream<'s> {
     fn new(s: &'s str) -> Self {
         Self {
             scanner: Scanner::from_source(s),
@@ -255,8 +255,8 @@ impl<'s> TokenStream<'s> {
     }
 }
 
-pub fn iter_tokens(source: &str) -> TokenStream {
-    TokenStream::new(source)
+pub fn iter_tokens(source: &str) -> ScannerStream {
+    ScannerStream::new(source)
 }
 
 #[cfg(test)]
