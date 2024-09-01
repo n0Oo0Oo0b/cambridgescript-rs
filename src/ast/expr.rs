@@ -47,7 +47,7 @@ pub enum Expr {
     Literal(Value),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
     Char(char),
     String(Rc<str>),
@@ -55,3 +55,19 @@ pub enum Value {
     Real(f64),
     Boolean(bool),
 }
+
+macro_rules! impl_from {
+    ($variant:ident($t:ty)) => {
+        impl From<$t> for Value {
+            fn from(value: $t) -> Self {
+                Value::$variant(value)
+            }
+        }
+    };
+}
+
+impl_from!(Char(char));
+impl_from!(String(Rc<str>));
+impl_from!(Integer(i64));
+impl_from!(Real(f64));
+impl_from!(Boolean(bool));

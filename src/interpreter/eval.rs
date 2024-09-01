@@ -3,39 +3,6 @@ use std::ops::{Add, Neg, Sub};
 use super::runtime::{ProgramState, RuntimeError, RuntimeResult};
 use crate::ast::{BinaryOp, Expr, UnaryOp, Value};
 
-impl Add for Value {
-    type Output = RuntimeResult<Value>;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
-            (l, r) => Err(RuntimeError::IncompatibleTypes(l, r)),
-        }
-    }
-}
-
-impl Sub for Value {
-    type Output = RuntimeResult<Value>;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
-            (l, r) => Err(RuntimeError::IncompatibleTypes(l, r)),
-        }
-    }
-}
-
-impl Neg for Value {
-    type Output = RuntimeResult<Value>;
-
-    fn neg(self) -> Self::Output {
-        match self {
-            Value::Integer(x) => Ok(Value::Integer(-x)),
-            _ => todo!(),
-        }
-    }
-}
-
 pub(super) trait Eval {
     fn eval(&self, state: &ProgramState) -> RuntimeResult<Value>;
 }
