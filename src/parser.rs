@@ -46,12 +46,13 @@ impl Precedence {
 
 type TokenPredicate = fn(&TokenType) -> bool;
 
-type ParseResult<T> = Result<T, ParserError>;
+pub type ParseResult<T> = Result<T, ParserError>;
 type PrefixRule<S> = fn(&mut Parser, &mut S) -> ParseResult<Expr>;
 type InfixRule<S> = fn(&mut Parser, left: Box<Expr>, &mut S) -> ParseResult<Expr>;
 
 /// Parses an iterator of tokens into an AST.
 /// I've tried to separate this from Scanner as much as possible.
+#[derive(Debug)]
 pub struct Parser {
     cur_prec: Precedence,
 }
@@ -113,18 +114,24 @@ impl Parser {
 
     fn literal<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
         let val = match stream.advance().expect("Literal token") {
-            TokenType::IntegerLiteral(i) => Value::Integer(i),
+            TokenType::CharLiteral(c) => c.into(),
+            TokenType::StringLiteral(s) => s.into(),
+            TokenType::IntegerLiteral(i) => i.into(),
+            TokenType::RealLiteral(r) => r.into(),
+            TokenType::BooleanLiteral(b) => b.into(),
             t => panic!("Invalid literal {t:?}"),
         };
         Ok(Expr::Literal(val))
     }
 
     fn ident<S: TokenStream>(&mut self, _stream: &mut S) -> ParseResult<Expr> {
+        todo!("Identifier handle");
         Ok(Expr::Identifier { handle: 0 })
     }
 
     fn grouping<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
         // Propagate errors early
+        stream.consume(TokenType::LParen).expect("Grouping");
         let expr = self.parse_expr(stream)?;
         force_consume!(stream, TokenType::RParen, "after expression")?;
         Ok(expr)
@@ -273,31 +280,49 @@ impl Parser {
     }
 }
 
+pub trait TokenStream {
+    fn peek(&mut self) -> Option<TokenType>;
+
+    fn advance(&mut self) -> Option<TokenType>;
+
+    fn consume(&mut self, ttype: TokenType) -> Option<TokenType> {
+        if self.peek().map_or(false, |t| t == ttype) {
+            self.advance()
+        } else {
+            None
+        }
+    }
+}
+
+impl<I> TokenStream for Peekable<I>
+where
+    I: Iterator<Item = TokenType>,
+{
+    fn peek(&mut self) -> Option<TokenType> {
+        // Ignore irrelevant tokens
+        loop {
+            match self.peek() {
+                Some(TokenType::Comment | TokenType::Whitespace) => (),
+                other => break other.cloned(),
+            }
+            self.next();
+        }
+    }
+
+    fn advance(&mut self) -> Option<TokenType> {
+        // Peeked value was already checked
+        self.next()
+    }
+}
+
 #[derive(Debug)]
-pub enum CompileError<'a> {
-    ScannerError(ScannerError<'a>),
-    ParserError(ParserError),
-}
-
-impl<'a> From<ScannerError<'a>> for CompileError<'a> {
-    fn from(value: ScannerError<'a>) -> Self {
-        Self::ScannerError(value)
-    }
-}
-
-impl From<ParserError> for CompileError<'_> {
-    fn from(value: ParserError) -> Self {
-        Self::ParserError(value)
-    }
-}
-
 pub struct TokenTypeExtractor<'s, I>
 where
     I: Iterator<Item = ScanResult<'s>>,
 {
     stream: I,
-    pub previous: Option<Token<'s>>,
-    errors: Vec<CompileError<'s>>,
+    pub previous: Option<Option<Token<'s>>>,
+    pub errors: Vec<ScannerError<'s>>,
 }
 
 impl<'s, I> TokenTypeExtractor<'s, I>
@@ -311,60 +336,47 @@ where
             errors: Vec::new(),
         }
     }
-}
 
-impl<'s, I> Iterator for TokenTypeExtractor<'s, I>
-where
-    I: Iterator<Item = ScanResult<'s>>,
-{
-    type Item = TokenType;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // Consume and store any scanner errors
-        self.previous = loop {
+    fn next_inner(&mut self) -> Option<Token<'s>> {
+        loop {
             match self.stream.next() {
-                Some(Err(e)) => self.errors.push(e.into()),
+                Some(Err(e)) => {
+                    self.errors.push(e);
+                }
+                Some(Ok(Token {
+                    type_: TokenType::Whitespace | TokenType::Comment,
+                    ..
+                })) => (),
                 Some(Ok(t)) => break Some(t),
                 None => break None,
             }
-        };
-        self.previous.clone().map(|t| t.type_)
+        }
     }
 }
 
-pub trait TokenStream {
-    fn peek(&mut self) -> Option<TokenType>;
-    fn advance(&mut self) -> Option<TokenType>;
-    fn consume(&mut self, ttype: TokenType) -> Option<TokenType>;
-}
-
-impl<I> TokenStream for Peekable<I>
+impl<'s, I> TokenStream for TokenTypeExtractor<'s, I>
 where
-    I: Iterator<Item = TokenType>,
+    I: Iterator<Item = ScanResult<'s>>,
 {
-    #[inline]
     fn peek(&mut self) -> Option<TokenType> {
-        // Ignore irrelevant tokens
-        loop {
-            match self.peek() {
-                Some(TokenType::Comment | TokenType::Whitespace) => (),
-                other => break other.cloned(),
-            }
+        // Manual version of get_or_insert_with due to borrow checking rules
+        if self.previous.is_none() {
+            self.previous = Some(self.next_inner());
         }
+        unsafe { self.previous.as_ref().unwrap_unchecked() }
+            .as_ref()
+            .map(|t| t.type_.clone())
     }
 
-    #[inline]
     fn advance(&mut self) -> Option<TokenType> {
-        // Peeked value was already checked
-        self.next()
+        self.previous
+            .take()
+            .unwrap_or_else(|| self.next_inner())
+            .as_ref()
+            .map(|t| t.type_.clone())
     }
 
-    #[inline]
     fn consume(&mut self, ttype: TokenType) -> Option<TokenType> {
-        if self.peek().map_or(false, |t| *t == ttype) {
-            self.advance()
-        } else {
-            None
-        }
+        todo!()
     }
 }

@@ -13,6 +13,7 @@ pub enum ScannerError<'a> {
 pub type ScanResult<'a> = Result<Token<'a>, ScannerError<'a>>;
 
 /// Convert
+#[derive(Debug)]
 struct Scanner<'src, 'a>
 where
     'src: 'a,
@@ -235,6 +236,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct ScannerStream<'s> {
     scanner: Scanner<'s, 's>,
 }
