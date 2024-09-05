@@ -16,25 +16,25 @@ pub enum RuntimeError {
 }
 
 #[derive(Debug)]
-pub enum InterpretError<'a> {
-    Scanner(ScannerError<'a>),
+pub enum InterpretError {
+    Scanner(ScannerError),
     Parser(ParserError),
     Runtime(RuntimeError),
 }
 
-impl<'a> From<ScannerError<'a>> for InterpretError<'a> {
-    fn from(value: ScannerError<'a>) -> Self {
+impl From<ScannerError> for InterpretError {
+    fn from(value: ScannerError) -> Self {
         InterpretError::Scanner(value)
     }
 }
 
-impl From<ParserError> for InterpretError<'_> {
+impl From<ParserError> for InterpretError {
     fn from(value: ParserError) -> Self {
         InterpretError::Parser(value)
     }
 }
 
-impl From<RuntimeError> for InterpretError<'_> {
+impl From<RuntimeError> for InterpretError {
     fn from(value: RuntimeError) -> Self {
         InterpretError::Runtime(value)
     }

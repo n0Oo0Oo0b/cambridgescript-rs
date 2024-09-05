@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::iter::Peekable;
 
 use crate::ast::*;
@@ -17,6 +18,17 @@ pub enum ParserError {
         context: &'static str,
     },
     ExpectedStatement,
+}
+
+impl Display for ParserError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnexpectedToken { expected, context } => {
+                write!(f, "Expected '{expected}' {context}")
+            }
+            _ => todo!(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
@@ -316,18 +328,18 @@ where
 }
 
 #[derive(Debug)]
-pub struct TokenTypeExtractor<'s, I>
+pub struct TokenTypeExtractor<I>
 where
-    I: Iterator<Item = ScanResult<'s>>,
+    I: Iterator<Item = ScanResult>,
 {
     stream: I,
-    pub previous: Option<Option<Token<'s>>>,
-    pub errors: Vec<ScannerError<'s>>,
+    pub previous: Option<Option<Token>>,
+    pub errors: Vec<ScannerError>,
 }
 
-impl<'s, I> TokenTypeExtractor<'s, I>
+impl<I> TokenTypeExtractor<I>
 where
-    I: Iterator<Item = ScanResult<'s>>,
+    I: Iterator<Item = ScanResult>,
 {
     pub fn new(stream: I) -> Self {
         Self {
@@ -337,7 +349,7 @@ where
         }
     }
 
-    fn next_inner(&mut self) -> Option<Token<'s>> {
+    fn next_inner(&mut self) -> Option<Token> {
         loop {
             match self.stream.next() {
                 Some(Err(e)) => {
@@ -354,9 +366,9 @@ where
     }
 }
 
-impl<'s, I> TokenStream for TokenTypeExtractor<'s, I>
+impl<I> TokenStream for TokenTypeExtractor<I>
 where
-    I: Iterator<Item = ScanResult<'s>>,
+    I: Iterator<Item = ScanResult>,
 {
     fn peek(&mut self) -> Option<TokenType> {
         // Manual version of get_or_insert_with due to borrow checking rules

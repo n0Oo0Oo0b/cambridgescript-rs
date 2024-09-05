@@ -1,16 +1,19 @@
+use codespan::{ByteIndex, FileId, Location, Span};
+
 use crate::token::{Token, TokenType};
 use std::iter::Peekable;
+use std::marker::PhantomData;
 use std::str::{self, Chars};
 
 #[derive(Debug)]
-pub enum ScannerError<'a> {
-    InvalidCharLiteral(&'a str),
-    UnterminatedString(&'a str),
-    InvalidRealLiteral(&'a str),
-    UnexpectedCharacter(char, &'a str),
+pub enum ScannerError {
+    InvalidCharLiteral(Span),
+    UnterminatedString(Span),
+    InvalidRealLiteral(Span),
+    UnexpectedCharacter(char, ByteIndex),
 }
 
-pub type ScanResult<'a> = Result<Token<'a>, ScannerError<'a>>;
+pub type ScanResult = Result<Token, ScannerError>;
 
 /// Convert
 #[derive(Debug)]
@@ -20,8 +23,8 @@ where
 {
     source: &'src str,
     iter: Peekable<Chars<'a>>,
-    start: usize,
-    current: usize,
+    start: u32,
+    current: u32,
 }
 
 impl<'a, 'src: 'a> Scanner<'src, 'a> {
@@ -49,13 +52,18 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     }
 
     #[inline]
-    fn lexeme_contents(&self) -> &'src str {
-        &self.source[self.start..self.current]
+    fn current_span(&self) -> Span {
+        Span::new(self.start, self.current)
     }
 
     #[inline]
-    fn make_token(&self, type_: TokenType) -> Token<'src> {
-        Token::with_lexeme(type_, self.lexeme_contents())
+    fn current_lexeme(&self) -> &str {
+        &self.source[self.start as usize..self.current as usize]
+    }
+
+    #[inline]
+    fn make_token(&self, type_: TokenType) -> Token {
+        Token::new(type_, self.current_span())
     }
 
     fn advance_if_match(&mut self, target: char) -> bool {
@@ -80,91 +88,63 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
         TokenType::Comment
     }
 
-    fn char(&mut self) -> ScanResult<'src> {
+    fn char(&mut self) -> ScanResult {
         let c = self
             .advance()
-            .ok_or(ScannerError::InvalidCharLiteral("hi"))?;
+            .ok_or(ScannerError::InvalidCharLiteral(self.current_span()))?;
         self.advance_if_match('\'')
             .then(|| self.make_token(TokenType::CharLiteral(c)))
-            .ok_or_else(|| ScannerError::InvalidCharLiteral(self.lexeme_contents()))
+            .ok_or_else(|| ScannerError::InvalidCharLiteral(self.current_span()))
     }
 
-    fn string(&mut self) -> ScanResult<'src> {
+    fn string(&mut self) -> ScanResult {
         self.advance_while(|&c| c != '"' && c != '\n');
         self.advance_if_match('"')
             .then(|| {
-                let quoted = self.lexeme_contents();
+                let quoted = self.current_lexeme();
                 let trimmed = &quoted[1..quoted.len() - 1];
                 self.make_token(TokenType::StringLiteral(trimmed.into()))
             })
-            .ok_or_else(|| ScannerError::UnterminatedString(self.lexeme_contents()))
+            .ok_or_else(|| ScannerError::UnterminatedString(self.current_span()))
     }
 
     fn identifier(&mut self) -> TokenType {
         self.advance_while(char::is_ascii_alphabetic);
         use TokenType as T;
-        match self.lexeme_contents() {
-            "PROCEDURE" => T::Procedure,
-            "ENDPROCEDURE" => T::EndProcedure,
-            "FUNCTION" => T::Function,
-            "RETURNS" => T::Returns,
-            "ENDFUNCTION" => T::EndFunction,
-            "RETURN" => T::Return,
-            "IF" => T::If,
-            "THEN" => T::Then,
-            "ELSE" => T::Else,
-            "ENDIF" => T::EndIf,
-            "CASE" => T::Case,
-            "OTHERWISE" => T::Otherwise,
-            "ENDCASE" => T::EndCase,
-            "FOR" => T::For,
-            "TO" => T::To,
-            "STEP" => T::Step,
-            "NEXT" => T::Next,
-            "REPEAT" => T::Repeat,
-            "UNTIL" => T::Until,
-            "WHILE" => T::While,
-            "DO" => T::Do,
-            "ENDWHILE" => T::EndWhile,
-            "DECLARE" => T::Declare,
-            "CONSTANT" => T::Constant,
-            "INPUT" => T::Input,
-            "OUTPUT" => T::Output,
-            "CALL" => T::Call,
-            "OPENFILE" => T::OpenFile,
-            "READFILE" => T::ReadFile,
-            "WRITEFILE" => T::WriteFile,
-            "CLOSEFILE" => T::CloseFile,
-            "READ" => T::Read,
-            "WRITE" => T::Write,
-            "INTEGER" => T::Integer,
-            "REAL" => T::Real,
-            "CHAR" => T::Char,
-            "STRING" => T::String,
-            "BOOLEAN" => T::Boolean,
-            "ARRAY" => T::Array,
-            "OF" => T::Of,
-            "TRUE" => T::BooleanLiteral(true),
-            "FALSE" => T::BooleanLiteral(false),
-            "AND" => T::And,
-            "OR" => T::Or,
-            "NOT" => T::Not,
+        #[rustfmt::skip]
+        match self.current_lexeme() {
+            // All reserved words
+            "PROCEDURE" => T::Procedure, "ENDPROCEDURE" => T::EndProcedure,
+            "FUNCTION" => T::Function, "RETURNS" => T::Returns, "ENDFUNCTION" => T::EndFunction,
+            "RETURN" => T::Return, "IF" => T::If, "THEN" => T::Then, "ELSE" => T::Else,
+            "ENDIF" => T::EndIf, "CASE" => T::Case, "OTHERWISE" => T::Otherwise,
+            "ENDCASE" => T::EndCase, "FOR" => T::For, "TO" => T::To, "STEP" => T::Step,
+            "NEXT" => T::Next, "REPEAT" => T::Repeat, "UNTIL" => T::Until, "WHILE" => T::While,
+            "DO" => T::Do, "ENDWHILE" => T::EndWhile, "DECLARE" => T::Declare,
+            "CONSTANT" => T::Constant, "INPUT" => T::Input, "OUTPUT" => T::Output,
+            "CALL" => T::Call, "OPENFILE" => T::OpenFile, "READFILE" => T::ReadFile,
+            "WRITEFILE" => T::WriteFile, "CLOSEFILE" => T::CloseFile, "READ" => T::Read,
+            "WRITE" => T::Write, "INTEGER" => T::Integer, "REAL" => T::Real, "CHAR" => T::Char,
+            "STRING" => T::String, "BOOLEAN" => T::Boolean, "ARRAY" => T::Array, "OF" => T::Of,
+            "TRUE" => T::BooleanLiteral(true), "FALSE" => T::BooleanLiteral(false), "AND" => T::And,
+            "OR" => T::Or, "NOT" => T::Not,
+
             ident => T::Identifier(ident.into()),
         }
     }
 
-    fn number(&mut self) -> ScanResult<'src> {
+    fn number(&mut self) -> ScanResult {
         self.advance_while(char::is_ascii_digit);
         if self.advance_if_match('.') {
             if !self.check_next(char::is_ascii_digit) {
-                Err(ScannerError::InvalidRealLiteral(self.lexeme_contents()))
+                Err(ScannerError::InvalidRealLiteral(self.current_span()))
             } else {
                 self.advance_while(char::is_ascii_digit);
-                let value = self.lexeme_contents().parse().unwrap();
+                let value = self.current_lexeme().parse().unwrap();
                 Ok(self.make_token(TokenType::RealLiteral(value)))
             }
         } else {
-            let value = self.lexeme_contents().parse().unwrap();
+            let value = self.current_lexeme().parse().unwrap();
             Ok(self.make_token(TokenType::IntegerLiteral(value)))
         }
     }
@@ -174,61 +154,41 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
         TokenType::Whitespace
     }
 
-    fn scan_next(&mut self) -> Option<ScanResult<'src>> {
+    fn scan_next(&mut self) -> Option<ScanResult> {
         self.start = self.current;
         let next_char = self.advance()?;
 
+        #[rustfmt::skip]
         let token_type = match next_char {
-            '(' => TokenType::LParen,
-            ')' => TokenType::RParen,
-            '[' => TokenType::LBracket,
-            ']' => TokenType::RBracket,
-            '+' => TokenType::Plus,
-            '-' => {
-                // TODO: replace with unary negation operator
-                if self.check_next(char::is_ascii_digit) {
-                    return Some(self.number());
-                } else {
-                    TokenType::Minus
-                }
-            }
+            '(' => TokenType::LParen, ')' => TokenType::RParen,
+            '[' => TokenType::LBracket, ']' => TokenType::RBracket,
+            '+' => TokenType::Plus, '-' => TokenType::Minus,
             '*' => TokenType::Star,
             '/' => {
-                if self.advance_if_match('/') {
-                    self.comment()
-                } else {
-                    TokenType::Slash
-                }
+                if self.advance_if_match('/') { self.comment() }
+                else { TokenType::Slash }
             }
             '^' => TokenType::Caret,
             '=' => TokenType::Equal,
             '>' => {
-                if self.advance_if_match('=') {
-                    TokenType::GreaterEqual
-                } else {
-                    TokenType::Greater
-                }
+                if self.advance_if_match('=') { TokenType::GreaterEqual }
+                else { TokenType::Greater }
             }
             '<' => {
-                if self.advance_if_match('=') {
-                    TokenType::LessEqual
-                } else if self.advance_if_match('>') {
-                    TokenType::NotEqual
-                } else if self.advance_if_match('-') {
-                    TokenType::LArrow
-                } else {
-                    TokenType::Less
-                }
+                if self.advance_if_match('=') { TokenType::LessEqual }
+                else if self.advance_if_match('>') { TokenType::NotEqual }
+                else if self.advance_if_match('-') { TokenType::LArrow }
+                else { TokenType::Less }
             }
             ',' => TokenType::Comma,
             ':' => TokenType::Colon,
             '\'' => return Some(self.char()),
             '"' => return Some(self.string()),
-            c if c.is_ascii_alphabetic() => self.identifier(),
             c if c.is_ascii_digit() => return Some(self.number()),
+            c if c.is_ascii_alphabetic() => self.identifier(),
             c if c.is_ascii_whitespace() => self.whitespace(),
-            c => {
-                let e = ScannerError::UnexpectedCharacter(c, self.lexeme_contents());
+            other => {
+                let e = ScannerError::UnexpectedCharacter(other, ByteIndex(self.current));
                 return Some(Err(e));
             }
         };
@@ -242,7 +202,7 @@ pub struct ScannerStream<'s> {
 }
 
 impl<'s> Iterator for ScannerStream<'s> {
-    type Item = ScanResult<'s>;
+    type Item = ScanResult;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.scanner.scan_next()
