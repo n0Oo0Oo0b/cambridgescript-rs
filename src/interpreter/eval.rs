@@ -1,10 +1,44 @@
-use std::ops::{Add, Neg, Sub};
+use std::cmp::Ordering;
 
 use super::runtime::{ProgramState, RuntimeError, RuntimeResult};
-use crate::ast::{BinaryOp, Expr, UnaryOp, Value};
+use crate::ast::{BinaryOp, Expr, Pow, UnaryOp, Value};
 
-pub(super) trait Eval {
+pub trait Eval {
     fn eval(&self, state: &ProgramState) -> RuntimeResult<Value>;
+}
+
+impl Value {
+    fn maybe_order(self, other: Self) -> RuntimeResult<Ordering> {
+        self.partial_cmp(&other)
+            .ok_or(RuntimeError::IncompatibleTypes(self, other))
+    }
+
+    fn apply_binary(op: &BinaryOp, left: Self, right: Self) -> RuntimeResult<Self> {
+        match op {
+            BinaryOp::And | BinaryOp::Or => {
+                let x: bool = match left.try_into() {
+                    Ok(val) => val,
+                    Err(e) => return Err(e),
+                };
+                let y: bool = match right.try_into() {
+                    Ok(val) => val,
+                    Err(e) => return Err(e),
+                };
+                Ok((if *op == BinaryOp::And { x && y } else { x || y }).into())
+            }
+            BinaryOp::Add => left + right,
+            BinaryOp::Sub => left - right,
+            BinaryOp::Mul => left * right,
+            BinaryOp::Div => left / right,
+            BinaryOp::Pow => left.pow(right),
+            BinaryOp::Eq => Ok(left.maybe_order(right)?.is_eq().into()),
+            BinaryOp::Ne => Ok(left.maybe_order(right)?.is_ne().into()),
+            BinaryOp::Le => Ok(left.maybe_order(right)?.is_le().into()),
+            BinaryOp::Ge => Ok(left.maybe_order(right)?.is_ge().into()),
+            BinaryOp::Lt => Ok(left.maybe_order(right)?.is_lt().into()),
+            BinaryOp::Gt => Ok(left.maybe_order(right)?.is_gt().into()),
+        }
+    }
 }
 
 impl Eval for Expr {
@@ -21,19 +55,15 @@ impl Eval for Expr {
                 let right = right.eval(state)?;
                 match op {
                     UnaryOp::Neg => -right,
-                    _ => todo!(),
+                    UnaryOp::Not => !right,
                 }
             }
             Self::Binary { op, left, right } => {
                 let left = left.eval(state)?;
                 let right = right.eval(state)?;
-                match op {
-                    BinaryOp::Add => left + right,
-                    BinaryOp::Sub => left - right,
-                    _ => todo!(),
-                }
+                Value::apply_binary(op, left, right)
             }
-            _ => todo!(),
+            _ => todo!("Expr::eval"),
         }
     }
 }

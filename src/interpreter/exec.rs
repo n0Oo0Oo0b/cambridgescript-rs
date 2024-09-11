@@ -1,16 +1,18 @@
-use crate::ast::{Block, Stmt, Value};
+use std::io::Write;
+
+use crate::ast::{Block, Stmt};
 
 use super::{
     eval::Eval,
     runtime::{ProgramState, RuntimeResult},
 };
 
-trait Exec {
-    fn exec(&self, state: &ProgramState) -> RuntimeResult<()>;
+pub trait Exec {
+    fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()>;
 }
 
 impl Exec for Block {
-    fn exec(&self, state: &ProgramState) -> RuntimeResult<()> {
+    fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
         for stmt in self.0.iter() {
             stmt.exec(state)?;
         }
@@ -19,26 +21,38 @@ impl Exec for Block {
 }
 
 impl Exec for Stmt {
-    fn exec(&self, state: &ProgramState) -> RuntimeResult<()> {
+    fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
         match self {
-            Stmt::Output(values) => {
-                let a: Vec<_> = values
+            Stmt::Output(exprs) => {
+                // Collect potential errors first
+                let values: Vec<_> = exprs
                     .iter()
                     .map(|v| v.eval(state))
                     .collect::<RuntimeResult<_>>()?;
+                for value in values {
+                    state
+                        .stdout
+                        .write_fmt(format_args!("{value}"))
+                        .expect("Failed to write");
+                }
+                state
+                    .stdout
+                    .write_all("\n".as_bytes())
+                    .expect("Failed to write");
             }
             Stmt::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                if let Value::Boolean(true) = condition.eval(state)? {
+                let cond = condition.eval(state)?;
+                if cond.try_into()? {
                     then_branch.exec(state)?;
                 } else {
                     else_branch.exec(state)?;
                 }
             }
-            _ => todo!(),
+            _ => todo!("Stmt::exec"),
         }
         Ok(())
     }
