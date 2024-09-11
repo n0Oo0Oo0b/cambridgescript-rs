@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::iter::Peekable;
 
 use crate::ast::*;
@@ -10,25 +9,16 @@ pub enum ParserError {
     UnexpectedToken {
         expected: TokenType,
         context: &'static str,
+        actual: TokenType,
     },
     UnexpectedEOF {
+        expected: TokenType,
         context: &'static str,
     },
     ExpectedExpression {
         context: &'static str,
     },
     ExpectedStatement,
-}
-
-impl Display for ParserError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UnexpectedToken { expected, context } => {
-                write!(f, "Expected '{expected}' {context}")
-            }
-            _ => todo!(),
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
@@ -42,6 +32,7 @@ enum Precedence {
     Term,
     Factor,
     Unary,
+    Exponent,
     Call,
     Primary,
 }
@@ -56,8 +47,6 @@ impl Precedence {
     }
 }
 
-type TokenPredicate = fn(&TokenType) -> bool;
-
 pub type ParseResult<T> = Result<T, ParserError>;
 type PrefixRule<S> = fn(&mut Parser, &mut S) -> ParseResult<Expr>;
 type InfixRule<S> = fn(&mut Parser, left: Box<Expr>, &mut S) -> ParseResult<Expr>;
@@ -67,6 +56,7 @@ type InfixRule<S> = fn(&mut Parser, left: Box<Expr>, &mut S) -> ParseResult<Expr
 #[derive(Debug)]
 pub struct Parser {
     cur_prec: Precedence,
+    // TODO: store current expression here?
 }
 
 impl Parser {
@@ -79,17 +69,26 @@ impl Parser {
 
 macro_rules! force_consume {
     ($stream:ident, $ttype:expr, $context:literal) => {
-        $stream.consume($ttype).ok_or(ParserError::UnexpectedToken {
-            expected: $ttype,
-            context: $context,
-        })
+        $stream
+            .consume($ttype)
+            .ok_or_else(|| match $stream.peek() {
+                Some(t) => ParserError::UnexpectedToken {
+                    expected: $ttype,
+                    context: $context,
+                    actual: t,
+                },
+                None => ParserError::UnexpectedEOF {
+                    expected: $ttype,
+                    context: $context,
+                },
+            })?;
     };
 }
 
 /// Expression parsing
 impl Parser {
     #[inline(always)] // Rule tables are only used in parse_precedence
-    fn unary_rule<S: TokenStream>(token: TokenType) -> Option<(PrefixRule<S>, Precedence)> {
+    fn get_prefix_rule<S: TokenStream>(token: TokenType) -> Option<(PrefixRule<S>, Precedence)> {
         use TokenType as TT;
         // Wrapping the whole thing in to avoid needing Some((a, b)) everywhere
         Some(match token {
@@ -107,7 +106,7 @@ impl Parser {
     }
 
     #[inline(always)]
-    fn binary_rule<S: TokenStream>(token: TokenType) -> Option<(InfixRule<S>, Precedence)> {
+    fn get_infix_rule<S: TokenStream>(token: TokenType) -> Option<(InfixRule<S>, Precedence)> {
         use TokenType as TT;
         Some(match token {
             TT::Or => (Parser::binary, Precedence::LogicOr),
@@ -118,7 +117,8 @@ impl Parser {
             }
             TT::Plus | TT::Minus => (Parser::binary, Precedence::Term),
             TT::Star | TT::Slash => (Parser::binary, Precedence::Factor),
-            TT::LParen => unimplemented!("function call"),
+            TT::Caret => (Parser::binary, Precedence::Exponent),
+            TT::LParen => (Parser::function_call, Precedence::Call),
             TT::LBracket => unimplemented!("array indexing"),
             _ => return None,
         })
@@ -138,14 +138,13 @@ impl Parser {
 
     fn ident<S: TokenStream>(&mut self, _stream: &mut S) -> ParseResult<Expr> {
         todo!("Identifier handle");
-        Ok(Expr::Identifier { handle: 0 })
     }
 
     fn grouping<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
         // Propagate errors early
         stream.consume(TokenType::LParen).expect("Grouping");
         let expr = self.parse_expr(stream)?;
-        force_consume!(stream, TokenType::RParen, "after expression")?;
+        force_consume!(stream, TokenType::RParen, "after expression");
         Ok(expr)
     }
 
@@ -163,6 +162,20 @@ impl Parser {
         Ok(Expr::Unary { op, right })
     }
 
+    fn function_call<S: TokenStream>(
+        &mut self,
+        left: Box<Expr>,
+        stream: &mut S,
+    ) -> ParseResult<Expr> {
+        stream.advance().expect("LParen");
+        force_consume!(stream, TokenType::RParen, "function call paren");
+        // TODO: function parameters
+        Ok(Expr::FunctionCall {
+            function: left,
+            args: vec![],
+        })
+    }
+
     fn binary<S: TokenStream>(&mut self, left: Box<Expr>, stream: &mut S) -> ParseResult<Expr> {
         let op = match stream.advance().expect("Binary operator") {
             TokenType::And => BinaryOp::And,
@@ -171,6 +184,7 @@ impl Parser {
             TokenType::Minus => BinaryOp::Sub,
             TokenType::Star => BinaryOp::Mul,
             TokenType::Slash => BinaryOp::Div,
+            TokenType::Caret => BinaryOp::Pow,
             TokenType::Equal => BinaryOp::Eq,
             TokenType::NotEqual => BinaryOp::Ne,
             TokenType::LessEqual => BinaryOp::Le,
@@ -194,7 +208,7 @@ impl Parser {
         stream: &mut S,
     ) -> ParseResult<Expr> {
         let unary_func: PrefixRule<S>;
-        match stream.peek().and_then(Self::unary_rule) {
+        match stream.peek().and_then(Self::get_prefix_rule) {
             Some(t) => (unary_func, self.cur_prec) = t,
             None => return Err(ParserError::ExpectedExpression { context }),
         };
@@ -202,7 +216,7 @@ impl Parser {
 
         loop {
             let binary_func: InfixRule<S>;
-            match stream.peek().and_then(Self::binary_rule) {
+            match stream.peek().and_then(Self::get_infix_rule) {
                 Some((_, p)) if prec > p => break,
                 Some(rule) => (binary_func, self.cur_prec) = rule,
                 None => break,
@@ -231,14 +245,14 @@ impl Parser {
     fn if_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
         stream.consume(TokenType::If).expect("IF");
         let condition = self.parse_expr(stream)?;
-        force_consume!(stream, TokenType::Then, "after IF condition")?;
+        force_consume!(stream, TokenType::Then, "after IF condition");
         let then_branch = self.parse_block(stream)?;
         let else_branch = if stream.consume(TokenType::Else).is_some() {
             self.parse_block(stream)?
         } else {
             Block::default()
         };
-        force_consume!(stream, TokenType::EndIf, "at the end of the IF statement")?;
+        force_consume!(stream, TokenType::EndIf, "at the end of the IF statement");
         Ok(Stmt::If {
             condition,
             then_branch,
@@ -250,7 +264,7 @@ impl Parser {
     fn repeat_until<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
         stream.consume(TokenType::Repeat).expect("REPEAT");
         let body = self.parse_block(stream)?;
-        force_consume!(stream, TokenType::Until, "after REPEAT-UNTIL condition")?;
+        force_consume!(stream, TokenType::Until, "after REPEAT-UNTIL condition");
         let condition = self.parse_expr(stream)?;
         Ok(Stmt::RepeatUntil { body, condition })
     }
@@ -258,12 +272,13 @@ impl Parser {
     pub fn parse_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
         match stream.peek().ok_or(ParserError::ExpectedStatement)? {
             TokenType::If => self.if_stmt(stream),
+            TokenType::Repeat => self.repeat_until(stream),
             TokenType::While => {
                 stream.advance();
                 let condition = self.parse_expr(stream)?;
-                force_consume!(stream, TokenType::Do, "after WHILE condition")?;
+                force_consume!(stream, TokenType::Do, "after WHILE condition");
                 let body = self.parse_block(stream)?;
-                force_consume!(stream, TokenType::EndWhile, "after while loop")?;
+                force_consume!(stream, TokenType::EndWhile, "after while loop");
                 Ok(Stmt::While { condition, body })
             }
             TokenType::Output => {
@@ -274,12 +289,7 @@ impl Parser {
                 stream.advance();
                 Ok(Stmt::Input(self.arguments(stream)?))
             }
-            TokenType::EndIf
-            | TokenType::EndCase
-            | TokenType::EndWhile
-            | TokenType::EndFunction
-            | TokenType::EndProcedure => Err(ParserError::ExpectedStatement),
-            t => todo!("{:?}", t),
+            _ => Err(ParserError::ExpectedStatement),
         }
     }
 
@@ -334,7 +344,7 @@ where
 {
     stream: I,
     pub previous: Option<Option<Token>>,
-    pub errors: Vec<ScannerError>,
+    pub scan_errors: Vec<ScannerError>,
 }
 
 impl<I> TokenTypeExtractor<I>
@@ -345,7 +355,7 @@ where
         Self {
             stream,
             previous: None,
-            errors: Vec::new(),
+            scan_errors: Vec::new(),
         }
     }
 
@@ -353,7 +363,7 @@ where
         loop {
             match self.stream.next() {
                 Some(Err(e)) => {
-                    self.errors.push(e);
+                    self.scan_errors.push(e);
                 }
                 Some(Ok(Token {
                     type_: TokenType::Whitespace | TokenType::Comment,
@@ -386,9 +396,5 @@ where
             .unwrap_or_else(|| self.next_inner())
             .as_ref()
             .map(|t| t.type_.clone())
-    }
-
-    fn consume(&mut self, ttype: TokenType) -> Option<TokenType> {
-        todo!()
     }
 }
