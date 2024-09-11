@@ -120,11 +120,25 @@ impl Display for TokenType {
 #[derive(Clone, Debug)]
 pub struct Token {
     pub type_: TokenType,
-    pub span: Span,
+    pub span: Option<Span>,
 }
 
 impl Token {
-    pub fn new(type_: TokenType, span: Span) -> Self {
+    pub fn new(type_: TokenType, span: Option<Span>) -> Self {
         Self { type_, span }
+    }
+
+    pub fn with_span(type_: TokenType, span: Span) -> Self {
+        Self::new(type_, Some(span))
+    }
+
+    pub fn without_span(type_: TokenType) -> Self {
+        Self::new(type_, None)
+    }
+}
+
+impl From<TokenType> for Token {
+    fn from(value: TokenType) -> Self {
+        Self::without_span(value)
     }
 }

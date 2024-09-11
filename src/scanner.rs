@@ -4,11 +4,11 @@ use crate::token::{Token, TokenType};
 use std::iter::Peekable;
 use std::str::{self, Chars};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ScannerError {
     InvalidCharLiteral(Span),
     UnterminatedString(Span),
-    InvalidRealLiteral(Span),
+    InvalidRealLiteral(Span, &'static str),
     UnexpectedCharacter(char, ByteIndex),
 }
 
@@ -16,7 +16,7 @@ pub type ScanResult = Result<Token, ScannerError>;
 
 /// Convert
 #[derive(Debug)]
-struct Scanner<'src, 'a>
+pub struct Scanner<'src, 'a>
 where
     'src: 'a,
 {
@@ -27,7 +27,7 @@ where
 }
 
 impl<'a, 'src: 'a> Scanner<'src, 'a> {
-    fn from_source(source: &'src str) -> Self {
+    pub fn new(source: &'src str) -> Self {
         Self {
             source,
             iter: source.chars().peekable(),
@@ -62,7 +62,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
 
     #[inline]
     fn make_token(&self, type_: TokenType) -> Token {
-        Token::new(type_, self.current_span())
+        Token::with_span(type_, self.current_span())
     }
 
     fn advance_if_match(&mut self, target: char) -> bool {
@@ -164,7 +164,10 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
         self.advance_while(char::is_ascii_digit);
         if self.advance_if_match('.') {
             if !self.check_next(char::is_ascii_digit) {
-                Err(ScannerError::InvalidRealLiteral(self.current_span()))
+                Err(ScannerError::InvalidRealLiteral(
+                    self.current_span(),
+                    "A decimal point must be followed by at least one digit",
+                ))
             } else {
                 self.advance_while(char::is_ascii_digit);
                 let value = self.current_lexeme().parse().unwrap();
@@ -214,6 +217,14 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
             c if c.is_ascii_digit() => return Some(self.number()),
             c if c.is_ascii_alphabetic() => self.identifier(),
             c if c.is_ascii_whitespace() => self.whitespace(),
+            // Special case for nicer errors
+            '.' if matches!(self.iter.peek(), Some(c) if c.is_ascii_digit()) => {
+                return Some(Err(ScannerError::InvalidRealLiteral(
+                    self.current_span(),
+                    "Real values must start with at least 1 digit",
+                )))
+            }
+            // Something else happened
             other => {
                 let e = ScannerError::UnexpectedCharacter(other, ByteIndex(self.current));
                 return Some(Err(e));
@@ -223,29 +234,12 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     }
 }
 
-#[derive(Debug)]
-pub struct ScannerStream<'s> {
-    scanner: Scanner<'s, 's>,
-}
-
-impl<'s> Iterator for ScannerStream<'s> {
+impl<'s> Iterator for Scanner<'s, 's> {
     type Item = ScanResult;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.scanner.scan_next()
+        self.scan_next()
     }
-}
-
-impl<'s> ScannerStream<'s> {
-    fn new(s: &'s str) -> Self {
-        Self {
-            scanner: Scanner::from_source(s),
-        }
-    }
-}
-
-pub fn scan_tokens(source: &str) -> ScannerStream {
-    ScannerStream::new(source)
 }
 
 #[cfg(test)]
@@ -253,7 +247,7 @@ mod tests {
     use super::*;
 
     fn scan_single_token(source: &str) -> ScanResult {
-        let mut scanner = Scanner::from_source(source);
+        let mut scanner = Scanner::new(source);
         scanner.scan_next().unwrap()
     }
 
@@ -343,7 +337,7 @@ mod tests {
     fn invalid_real_literal() {
         assert!(matches!(
             scan_single_token("2."),
-            Err(ScannerError::InvalidRealLiteral(_))
+            Err(ScannerError::InvalidRealLiteral(..))
         ));
         assert!(scan_single_token(".5").is_err());
     }

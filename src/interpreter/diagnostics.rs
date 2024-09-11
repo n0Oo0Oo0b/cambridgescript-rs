@@ -1,63 +1,75 @@
-use codespan::Span;
-use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle, Severity};
+use std::ops::Range;
 
-use crate::{parser::ParserError, scanner::ScannerError};
+use codespan::Span;
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+
+use crate::{parser::ParseError, scanner::ScannerError, token::Token};
 
 use super::runtime::{InterpretError, RuntimeError};
 
-macro_rules! make_diagnostic {
-    ($message:literal, $span:expr, $($t:tt)*) => {{
-        Diagnostic::new(Severity::Error)
-            .with_message($message)
-            .with_labels(vec![
-                Label::new(LabelStyle::Primary, (), $span).with_message(format!($($t)*))
-            ])
-    }};
+#[inline(always)]
+fn range_after(span: Span) -> Range<usize> {
+    let end = span.end().to_usize();
+    end..end
 }
 
 impl From<ScannerError> for Diagnostic<()> {
     fn from(value: ScannerError) -> Self {
         match value {
-            ScannerError::InvalidCharLiteral(span) => make_diagnostic!(
-                "Invalid character literal",
-                span,
-                "Expected a ' to end the char",
-            ),
-            ScannerError::UnterminatedString(span) => make_diagnostic!(
-                "Unterminated string literal",
-                span,
-                "Another \" is needed to end the string",
-            ),
-            ScannerError::InvalidRealLiteral(span) => {
-                make_diagnostic!("Invalid real literal", span, "Invalid real message")
-            }
-            ScannerError::UnexpectedCharacter(c, index) => make_diagnostic!(
-                "Unexpected character",
-                Span::new(index, index),
-                "Unexpected character '{c}'"
-            ),
+            ScannerError::InvalidCharLiteral(span) => Diagnostic::error()
+                .with_message("Invalid character")
+                .with_labels(vec![
+                    Label::primary((), span).with_message("Expected a ' to end the char")
+                ]),
+            ScannerError::UnterminatedString(span) => Diagnostic::error()
+                .with_message("Unterminated string")
+                .with_labels(vec![Label::primary((), span)
+                    .with_message("Another `\"` was expected to close the string")]),
+            ScannerError::InvalidRealLiteral(span, message) => Diagnostic::error()
+                .with_message("Invalid real value")
+                .with_labels(vec![Label::primary((), span).with_message(message)]),
+            ScannerError::UnexpectedCharacter(c, index) => Diagnostic::error()
+                .with_message("Unexpected character")
+                .with_labels(vec![Label::primary((), index.to_usize()..index.to_usize())
+                    .with_message(format!("Unexpected character '{c}'"))]),
         }
     }
 }
 
-impl ParserError {
-    fn make_diagnostic(self, span: Span) -> Diagnostic<()> {
-        match self {
-            ParserError::UnexpectedEOF { expected, context } => {
-                make_diagnostic!("Unexpected EOF", span, "Expected '{expected}' {context}",)
-            }
-            ParserError::UnexpectedToken {
+fn error_labels(
+    expected: &str,
+    token: Option<Token>,
+    context: (&'static str, Option<Span>),
+) -> Vec<Label<()>> {
+    let (ctx_msg, ctx_span) = (context.0, context.1.unwrap());
+    let (found_span, found_name) = match &token {
+        Some(t) => (t.span.unwrap().into(), t.type_.to_string()),
+        None => (range_after(ctx_span), "nothing".into()),
+    };
+    vec![
+        Label::primary((), found_span)
+            .with_message(format!("Expected {expected}, found {found_name}")),
+        Label::secondary((), ctx_span).with_message(format!("Required {}", ctx_msg)),
+    ]
+}
+
+impl From<ParseError> for Diagnostic<()> {
+    fn from(value: ParseError) -> Self {
+        match value {
+            ParseError::UnexpectedToken {
                 expected,
                 actual,
                 context,
-            } => make_diagnostic!(
-                "Unexpected EOF",
-                span,
-                "Expected '{expected}' {context}, found '{actual}'",
-            ),
-            ParserError::ExpectedExpression { context } => {
-                make_diagnostic!("Expected expression", span, "Expected expression {context}")
-            }
+            } => Diagnostic::error()
+                .with_message(
+                    #[rustfmt::skip]
+                        if actual.is_some() { "Unexpected token" }
+                        else { "Unexpected EOF (end of file)" },
+                )
+                .with_labels(error_labels(&expected.to_string(), actual, context)),
+            ParseError::ExpectedExpression { context, actual } => Diagnostic::error()
+                .with_message("Unexpected expression")
+                .with_labels(error_labels("expression", actual, context)),
             _ => todo!(),
         }
     }
@@ -78,7 +90,7 @@ impl From<InterpretError> for Diagnostic<()> {
     fn from(value: InterpretError) -> Self {
         match value {
             InterpretError::Scanner(err) => err.into(),
-            InterpretError::Parser(err, span) => err.make_diagnostic(span),
+            InterpretError::Parser(err) => err.into(),
             InterpretError::Runtime(_) => todo!(),
         }
     }

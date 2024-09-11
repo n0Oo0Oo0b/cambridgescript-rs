@@ -1,25 +1,24 @@
-use std::iter::Peekable;
+use codespan::Span;
 
 use crate::ast::*;
 use crate::scanner::{ScanResult, ScannerError};
 use crate::token::{Token, TokenType};
 
-#[derive(Debug)]
-pub enum ParserError {
+#[derive(Debug, Clone)]
+pub enum ParseError {
     UnexpectedToken {
+        context: (&'static str, Option<Span>),
         expected: TokenType,
-        context: &'static str,
-        actual: TokenType,
-    },
-    UnexpectedEOF {
-        expected: TokenType,
-        context: &'static str,
+        actual: Option<Token>,
     },
     ExpectedExpression {
-        context: &'static str,
+        context: (&'static str, Option<Span>),
+        actual: Option<Token>,
     },
     ExpectedStatement,
 }
+
+pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
 enum Precedence {
@@ -47,10 +46,6 @@ impl Precedence {
     }
 }
 
-pub type ParseResult<T> = Result<T, ParserError>;
-type PrefixRule<S> = fn(&mut Parser, &mut S) -> ParseResult<Expr>;
-type InfixRule<S> = fn(&mut Parser, left: Box<Expr>, &mut S) -> ParseResult<Expr>;
-
 /// Parses an iterator of tokens into an AST.
 /// I've tried to separate this from Scanner as much as possible.
 #[derive(Debug)]
@@ -71,19 +66,25 @@ macro_rules! force_consume {
     ($stream:ident, $ttype:expr, $context:literal) => {
         $stream
             .consume($ttype)
-            .ok_or_else(|| match $stream.peek() {
-                Some(t) => ParserError::UnexpectedToken {
-                    expected: $ttype,
-                    context: $context,
-                    actual: t,
-                },
-                None => ParserError::UnexpectedEOF {
-                    expected: $ttype,
-                    context: $context,
-                },
+            .ok_or_else(|| ParseError::UnexpectedToken {
+                context: ($context, $stream.peek().map(|t| t.span.unwrap())),
+                expected: $ttype,
+                actual: $stream.peek(),
             })?;
     };
 }
+
+macro_rules! token_of {
+    ($($t:tt)*) => {
+        Token {
+            type_: TokenType::$($t)*,
+            ..
+        }
+    };
+}
+
+type PrefixRule<S> = fn(&mut Parser, &mut S) -> ParseResult<Expr>;
+type InfixRule<S> = fn(&mut Parser, left: Box<Expr>, &mut S) -> ParseResult<Expr>;
 
 /// Expression parsing
 impl Parser {
@@ -126,11 +127,11 @@ impl Parser {
 
     fn literal<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
         let val = match stream.advance().expect("Literal token") {
-            TokenType::CharLiteral(c) => c.into(),
-            TokenType::StringLiteral(s) => s.into(),
-            TokenType::IntegerLiteral(i) => i.into(),
-            TokenType::RealLiteral(r) => r.into(),
-            TokenType::BooleanLiteral(b) => b.into(),
+            token_of!(CharLiteral(c)) => c.into(),
+            token_of!(StringLiteral(s)) => s.into(),
+            token_of!(IntegerLiteral(i)) => i.into(),
+            token_of!(RealLiteral(r)) => r.into(),
+            token_of!(BooleanLiteral(b)) => b.into(),
             t => panic!("Invalid literal {t:?}"),
         };
         Ok(Expr::Literal(val))
@@ -150,8 +151,8 @@ impl Parser {
 
     fn unary<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
         let op = match stream.advance().expect("Unary operator") {
-            TokenType::Minus => UnaryOp::Neg,
-            TokenType::Not => UnaryOp::Not,
+            token_of!(Minus) => UnaryOp::Neg,
+            token_of!(Not) => UnaryOp::Not,
             t => panic!("Invalid unary operator {t:?}"),
         };
         let right = Box::new(self.parse_precedence(
@@ -178,19 +179,19 @@ impl Parser {
 
     fn binary<S: TokenStream>(&mut self, left: Box<Expr>, stream: &mut S) -> ParseResult<Expr> {
         let op = match stream.advance().expect("Binary operator") {
-            TokenType::And => BinaryOp::And,
-            TokenType::Or => BinaryOp::Or,
-            TokenType::Plus => BinaryOp::Add,
-            TokenType::Minus => BinaryOp::Sub,
-            TokenType::Star => BinaryOp::Mul,
-            TokenType::Slash => BinaryOp::Div,
-            TokenType::Caret => BinaryOp::Pow,
-            TokenType::Equal => BinaryOp::Eq,
-            TokenType::NotEqual => BinaryOp::Ne,
-            TokenType::LessEqual => BinaryOp::Le,
-            TokenType::GreaterEqual => BinaryOp::Ge,
-            TokenType::Less => BinaryOp::Lt,
-            TokenType::Greater => BinaryOp::Gt,
+            token_of!(And) => BinaryOp::And,
+            token_of!(Or) => BinaryOp::Or,
+            token_of!(Plus) => BinaryOp::Add,
+            token_of!(Minus) => BinaryOp::Sub,
+            token_of!(Star) => BinaryOp::Mul,
+            token_of!(Slash) => BinaryOp::Div,
+            token_of!(Caret) => BinaryOp::Pow,
+            token_of!(Equal) => BinaryOp::Eq,
+            token_of!(NotEqual) => BinaryOp::Ne,
+            token_of!(LessEqual) => BinaryOp::Le,
+            token_of!(GreaterEqual) => BinaryOp::Ge,
+            token_of!(Less) => BinaryOp::Lt,
+            token_of!(Greater) => BinaryOp::Gt,
             t => panic!("Invalid binary operator {t:?}"),
         };
         let right = Box::new(self.parse_precedence(
@@ -208,15 +209,20 @@ impl Parser {
         stream: &mut S,
     ) -> ParseResult<Expr> {
         let unary_func: PrefixRule<S>;
-        match stream.peek().and_then(Self::get_prefix_rule) {
+        match stream.peek().and_then(|t| Self::get_prefix_rule(t.type_)) {
             Some(t) => (unary_func, self.cur_prec) = t,
-            None => return Err(ParserError::ExpectedExpression { context }),
+            None => {
+                return Err(ParseError::ExpectedExpression {
+                    context: (context, None),
+                    actual: stream.peek(),
+                })
+            }
         };
         let mut res = unary_func(self, stream)?;
 
         loop {
             let binary_func: InfixRule<S>;
-            match stream.peek().and_then(Self::get_infix_rule) {
+            match stream.peek().and_then(|t| Self::get_infix_rule(t.type_)) {
                 Some((_, p)) if prec > p => break,
                 Some(rule) => (binary_func, self.cur_prec) = rule,
                 None => break,
@@ -270,10 +276,10 @@ impl Parser {
     }
 
     pub fn parse_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
-        match stream.peek().ok_or(ParserError::ExpectedStatement)? {
-            TokenType::If => self.if_stmt(stream),
-            TokenType::Repeat => self.repeat_until(stream),
-            TokenType::While => {
+        match stream.peek().ok_or(ParseError::ExpectedStatement)? {
+            token_of!(If) => self.if_stmt(stream),
+            token_of!(Repeat) => self.repeat_until(stream),
+            token_of!(While) => {
                 stream.advance();
                 let condition = self.parse_expr(stream)?;
                 force_consume!(stream, TokenType::Do, "after WHILE condition");
@@ -281,15 +287,15 @@ impl Parser {
                 force_consume!(stream, TokenType::EndWhile, "after while loop");
                 Ok(Stmt::While { condition, body })
             }
-            TokenType::Output => {
+            token_of!(Output) => {
                 stream.advance();
                 Ok(Stmt::Output(self.arguments(stream)?))
             }
-            TokenType::Input => {
+            token_of!(Input) => {
                 stream.advance();
                 Ok(Stmt::Input(self.arguments(stream)?))
             }
-            _ => Err(ParserError::ExpectedStatement),
+            _ => Err(ParseError::ExpectedStatement),
         }
     }
 
@@ -303,12 +309,12 @@ impl Parser {
 }
 
 pub trait TokenStream {
-    fn peek(&mut self) -> Option<TokenType>;
+    fn peek(&mut self) -> Option<Token>;
 
-    fn advance(&mut self) -> Option<TokenType>;
+    fn advance(&mut self) -> Option<Token>;
 
-    fn consume(&mut self, ttype: TokenType) -> Option<TokenType> {
-        if self.peek().map_or(false, |t| t == ttype) {
+    fn consume(&mut self, ttype: TokenType) -> Option<Token> {
+        if self.peek().map_or(false, |t| t.type_ == ttype) {
             self.advance()
         } else {
             None
@@ -316,29 +322,8 @@ pub trait TokenStream {
     }
 }
 
-impl<I> TokenStream for Peekable<I>
-where
-    I: Iterator<Item = TokenType>,
-{
-    fn peek(&mut self) -> Option<TokenType> {
-        // Ignore irrelevant tokens
-        loop {
-            match self.peek() {
-                Some(TokenType::Comment | TokenType::Whitespace) => (),
-                other => break other.cloned(),
-            }
-            self.next();
-        }
-    }
-
-    fn advance(&mut self) -> Option<TokenType> {
-        // Peeked value was already checked
-        self.next()
-    }
-}
-
 #[derive(Debug)]
-pub struct TokenTypeExtractor<I>
+pub struct TokenExtractor<I>
 where
     I: Iterator<Item = ScanResult>,
 {
@@ -347,7 +332,7 @@ where
     pub scan_errors: Vec<ScannerError>,
 }
 
-impl<I> TokenTypeExtractor<I>
+impl<I> TokenExtractor<I>
 where
     I: Iterator<Item = ScanResult>,
 {
@@ -376,25 +361,25 @@ where
     }
 }
 
-impl<I> TokenStream for TokenTypeExtractor<I>
+impl<I> TokenStream for TokenExtractor<I>
 where
     I: Iterator<Item = ScanResult>,
 {
-    fn peek(&mut self) -> Option<TokenType> {
+    fn peek(&mut self) -> Option<Token> {
         // Manual version of get_or_insert_with due to borrow checking rules
         if self.previous.is_none() {
             self.previous = Some(self.next_inner());
         }
         unsafe { self.previous.as_ref().unwrap_unchecked() }
             .as_ref()
-            .map(|t| t.type_.clone())
+            .cloned()
     }
 
-    fn advance(&mut self) -> Option<TokenType> {
+    fn advance(&mut self) -> Option<Token> {
         self.previous
             .take()
             .unwrap_or_else(|| self.next_inner())
             .as_ref()
-            .map(|t| t.type_.clone())
+            .cloned()
     }
 }

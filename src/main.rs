@@ -12,7 +12,7 @@ mod token;
 
 fn main() {
     let mut i = Interpreter::new();
-    if let Err(e) = i.exec_src(r#"IF 1 THEN OUTPUT 2 ELSE OUTPUT 3 ENDIF"#) {
+    if let Err(e) = i.exec_src(r#"IF TRUE THEN OUTPUT 1"#) {
         dbg!(e);
     }
     io::copy(&mut i.get_stdout(), &mut io::stdout()).expect("Couldn't copy");
