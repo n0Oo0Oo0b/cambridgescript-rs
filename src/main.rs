@@ -1,11 +1,8 @@
-#![allow(dead_code, unused)]
+#![feature(str_lines_remainder, stmt_expr_attributes, try_trait_v2, read_buf)]
 
 use std::io;
-use std::io::prelude::*;
 
 use interpreter::Interpreter;
-use parser::Parser;
-use token::TokenType;
 
 mod ast;
 mod interpreter;
@@ -15,6 +12,8 @@ mod token;
 
 fn main() {
     let mut i = Interpreter::new();
-    let a = i.eval("1 + 1.");
-    dbg!(a);
+    if let Err(e) = i.exec_src(r#"IF 1 THEN OUTPUT 2 ELSE OUTPUT 3 ENDIF"#) {
+        dbg!(e);
+    }
+    io::copy(&mut i.get_stdout(), &mut io::stdout()).expect("Couldn't copy");
 }

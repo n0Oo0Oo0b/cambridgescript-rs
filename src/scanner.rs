@@ -1,8 +1,7 @@
-use codespan::{ByteIndex, FileId, Location, Span};
+use codespan::{ByteIndex, Span};
 
 use crate::token::{Token, TokenType};
 use std::iter::Peekable;
-use std::marker::PhantomData;
 use std::str::{self, Chars};
 
 #[derive(Debug)]
@@ -111,24 +110,52 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     fn identifier(&mut self) -> TokenType {
         self.advance_while(char::is_ascii_alphabetic);
         use TokenType as T;
-        #[rustfmt::skip]
         match self.current_lexeme() {
-            // All reserved words
-            "PROCEDURE" => T::Procedure, "ENDPROCEDURE" => T::EndProcedure,
-            "FUNCTION" => T::Function, "RETURNS" => T::Returns, "ENDFUNCTION" => T::EndFunction,
-            "RETURN" => T::Return, "IF" => T::If, "THEN" => T::Then, "ELSE" => T::Else,
-            "ENDIF" => T::EndIf, "CASE" => T::Case, "OTHERWISE" => T::Otherwise,
-            "ENDCASE" => T::EndCase, "FOR" => T::For, "TO" => T::To, "STEP" => T::Step,
-            "NEXT" => T::Next, "REPEAT" => T::Repeat, "UNTIL" => T::Until, "WHILE" => T::While,
-            "DO" => T::Do, "ENDWHILE" => T::EndWhile, "DECLARE" => T::Declare,
-            "CONSTANT" => T::Constant, "INPUT" => T::Input, "OUTPUT" => T::Output,
-            "CALL" => T::Call, "OPENFILE" => T::OpenFile, "READFILE" => T::ReadFile,
-            "WRITEFILE" => T::WriteFile, "CLOSEFILE" => T::CloseFile, "READ" => T::Read,
-            "WRITE" => T::Write, "INTEGER" => T::Integer, "REAL" => T::Real, "CHAR" => T::Char,
-            "STRING" => T::String, "BOOLEAN" => T::Boolean, "ARRAY" => T::Array, "OF" => T::Of,
-            "TRUE" => T::BooleanLiteral(true), "FALSE" => T::BooleanLiteral(false), "AND" => T::And,
-            "OR" => T::Or, "NOT" => T::Not,
-
+            "PROCEDURE" => T::Procedure,
+            "ENDPROCEDURE" => T::EndProcedure,
+            "FUNCTION" => T::Function,
+            "RETURNS" => T::Returns,
+            "ENDFUNCTION" => T::EndFunction,
+            "RETURN" => T::Return,
+            "IF" => T::If,
+            "THEN" => T::Then,
+            "ELSE" => T::Else,
+            "ENDIF" => T::EndIf,
+            "CASE" => T::Case,
+            "OTHERWISE" => T::Otherwise,
+            "ENDCASE" => T::EndCase,
+            "FOR" => T::For,
+            "TO" => T::To,
+            "STEP" => T::Step,
+            "NEXT" => T::Next,
+            "REPEAT" => T::Repeat,
+            "UNTIL" => T::Until,
+            "WHILE" => T::While,
+            "DO" => T::Do,
+            "ENDWHILE" => T::EndWhile,
+            "DECLARE" => T::Declare,
+            "CONSTANT" => T::Constant,
+            "INPUT" => T::Input,
+            "OUTPUT" => T::Output,
+            "CALL" => T::Call,
+            "OPENFILE" => T::OpenFile,
+            "READFILE" => T::ReadFile,
+            "WRITEFILE" => T::WriteFile,
+            "CLOSEFILE" => T::CloseFile,
+            "READ" => T::Read,
+            "WRITE" => T::Write,
+            "INTEGER" => T::Integer,
+            "REAL" => T::Real,
+            "CHAR" => T::Char,
+            "STRING" => T::String,
+            "BOOLEAN" => T::Boolean,
+            "ARRAY" => T::Array,
+            "OF" => T::Of,
+            "TRUE" => T::BooleanLiteral(true),
+            "FALSE" => T::BooleanLiteral(false),
+            "AND" => T::And,
+            "OR" => T::Or,
+            "NOT" => T::Not,
             ident => T::Identifier(ident.into()),
         }
     }
@@ -217,7 +244,7 @@ impl<'s> ScannerStream<'s> {
     }
 }
 
-pub fn iter_tokens(source: &str) -> ScannerStream {
+pub fn scan_tokens(source: &str) -> ScannerStream {
     ScannerStream::new(source)
 }
 
