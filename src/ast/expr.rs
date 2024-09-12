@@ -30,7 +30,6 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug)]
-#[allow(unused)]
 pub enum Expr {
     Binary {
         left: Box<Expr>,

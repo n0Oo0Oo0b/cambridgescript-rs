@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::rc::Rc;
+
 use codespan::{ByteIndex, Span};
 
 use crate::ast::*;
@@ -34,6 +37,7 @@ enum Precedence {
     Unary,
     Exponent,
     Call,
+    Assignable,
     Primary,
 }
 
@@ -53,6 +57,7 @@ impl Precedence {
 pub struct Parser {
     cur_prec: Precedence,
     cur_ctx: ParseContext,
+    ident_map: HashMap<Rc<str>, usize>,
 }
 
 impl Parser {
@@ -60,6 +65,7 @@ impl Parser {
         Self {
             cur_prec: Precedence::None,
             cur_ctx: ("", None),
+            ident_map: HashMap::new(),
         }
     }
 }
@@ -166,8 +172,20 @@ impl Parser {
         Ok(Expr::Literal(val))
     }
 
-    fn ident<S: TokenStream>(&mut self, _stream: &mut S) -> ParseResult<Expr> {
-        todo!("Identifier handle");
+    fn ident<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
+        let ident = match stream.advance() {
+            Some(Token {
+                type_: TokenType::Identifier(i),
+                ..
+            }) => i,
+            _ => panic!("ident() called without identifier token"),
+        };
+        let handle = *self
+            .ident_map
+            .try_insert(ident, self.ident_map.len())
+            .as_deref()
+            .unwrap_or_else(|e| e.entry.get());
+        Ok(Expr::Identifier { handle })
     }
 
     fn grouping<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
@@ -188,9 +206,9 @@ impl Parser {
             t => panic!("Invalid unary operator {t:?}"),
         };
         let right = Box::new(self.parse_precedence(
+            stream,
             self.cur_prec.next(),
             "after unary operator",
-            stream,
         )?);
         Ok(Expr::Unary { op, right })
     }
@@ -230,18 +248,18 @@ impl Parser {
             t => panic!("Invalid binary operator {t:?}"),
         };
         let right = Box::new(self.parse_precedence(
+            stream,
             self.cur_prec.next(),
             "after binary operator",
-            stream,
         )?);
         Ok(Expr::Binary { left, op, right })
     }
 
     fn parse_precedence<S: TokenStream>(
         &mut self,
+        stream: &mut S,
         prec: Precedence,
         _context: &'static str,
-        stream: &mut S,
     ) -> ParseResult<Expr> {
         let unary_func: PrefixRule<S>;
         match stream.peek().and_then(|t| Self::get_prefix_rule(t.type_)) {
@@ -263,7 +281,7 @@ impl Parser {
     }
 
     pub fn parse_expr<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
-        self.parse_precedence(Precedence::LogicOr, "", stream)
+        self.parse_precedence(stream, Precedence::LogicOr, "expression")
     }
 }
 
@@ -336,7 +354,18 @@ impl Parser {
                 stream.advance();
                 Ok(Stmt::Input(self.arguments(stream)?))
             }
-            _ => Err(self.make_error(stream, ParseErrorKind::ExpectedStatement)),
+            // Try to interpret as assignment
+            // NOTE: no consume guarantees?
+            _ => match self.parse_precedence(stream, Precedence::Assignable, "") {
+                Ok(target) => {
+                    // TODO: update after spanned expr
+                    self.cur_ctx = ("for assignment", Some(Span::initial()));
+                    force_consume!(self, stream; TokenType::LArrow);
+                    let value = self.parse_expr(stream)?;
+                    Ok(Stmt::Assignment { target, value })
+                }
+                Err(_) => Err(self.make_error(stream, ParseErrorKind::ExpectedStatement)),
+            },
         }
     }
 

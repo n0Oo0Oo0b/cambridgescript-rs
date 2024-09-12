@@ -68,10 +68,10 @@ impl From<ParseError> for Diagnostic<()> {
 impl From<RuntimeError> for Diagnostic<()> {
     fn from(value: RuntimeError) -> Self {
         match value {
-            RuntimeError::UndeclaredVariable(_) => todo!(),
-            RuntimeError::UndefinedVariable(_) => todo!(),
-            RuntimeError::IncompatibleTypes(_, _) => todo!(),
-            RuntimeError::InvalidBool(_) => todo!(),
+            RuntimeError::UndeclaredVariable(_) => todo!("Undeclared ident"),
+            RuntimeError::UndefinedVariable(_) => todo!("Undefined ident"),
+            RuntimeError::IncompatibleTypes(_, _) => todo!("Incompatible type"),
+            RuntimeError::InvalidBool(_) => todo!("Implicit cast to bool"),
         }
     }
 }
@@ -79,9 +79,9 @@ impl From<RuntimeError> for Diagnostic<()> {
 impl From<InterpretError> for Diagnostic<()> {
     fn from(value: InterpretError) -> Self {
         match value {
-            InterpretError::Scanner(err) => err.into(),
-            InterpretError::Parser(err) => err.into(),
-            InterpretError::Runtime(_) => todo!(),
+            InterpretError::Scanner(e) => e.into(),
+            InterpretError::Parser(e) => e.into(),
+            InterpretError::Runtime(e) => e.into(),
         }
     }
 }

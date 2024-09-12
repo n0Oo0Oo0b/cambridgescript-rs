@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use crate::ast::{Expr, Type, Value};
 
 #[derive(Debug)]

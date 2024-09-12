@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::ast::{Block, Stmt};
+use crate::ast::{Block, Expr, Stmt};
 
 use super::{
     eval::Eval,
@@ -51,6 +51,14 @@ impl Exec for Stmt {
                 } else {
                     else_branch.exec(state)?;
                 }
+            }
+            // TODO: Figure out array indexing
+            Stmt::Assignment {
+                target: Expr::Identifier { handle },
+                value,
+            } => {
+                // TODO: enforce declarations
+                state.variables.insert(*handle, Some(value.eval(state)?));
             }
             _ => todo!("Stmt::exec"),
         }

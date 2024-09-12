@@ -1,4 +1,10 @@
-#![feature(str_lines_remainder, stmt_expr_attributes, try_trait_v2, read_buf)]
+#![feature(
+    str_lines_remainder,
+    stmt_expr_attributes,
+    try_trait_v2,
+    read_buf,
+    map_try_insert
+)]
 
 use std::io;
 
@@ -11,9 +17,10 @@ mod scanner;
 mod token;
 
 const SOURCE: &str = r#"
-IF 2 + 2 = 4 THEN
-    OUTPUT "yay"
-ENDIF
+a <-
+OUTPUT a + 1
+a <- a + 1
+OUTPUT a + 10
 "#;
 
 fn main() {
