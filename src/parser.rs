@@ -315,7 +315,7 @@ impl Parser {
     pub fn parse_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
         match stream
             .peek()
-            .ok_or(self.make_error(stream, ParseErrorKind::ExpectedStatement))?
+            .ok_or_else(|| self.make_error(stream, ParseErrorKind::ExpectedStatement))?
         {
             token_of!(If) => self.if_stmt(stream),
             token_of!(Repeat) => self.repeat_until(stream),

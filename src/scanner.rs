@@ -90,7 +90,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     fn char(&mut self) -> ScanResult {
         let c = self
             .advance()
-            .ok_or(ScannerError::InvalidCharLiteral(self.current_span()))?;
+            .ok_or_else(|| ScannerError::InvalidCharLiteral(self.current_span()))?;
         self.advance_if_match('\'')
             .then(|| self.make_token(TokenType::CharLiteral(c)))
             .ok_or_else(|| ScannerError::InvalidCharLiteral(self.current_span()))
