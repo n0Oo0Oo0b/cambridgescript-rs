@@ -1,6 +1,7 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::{
+    ast::MaybeSpanned,
     parser::{ParseError, ParseErrorKind},
     scanner::ScannerError,
 };
@@ -58,7 +59,7 @@ impl From<ParseError> for Diagnostic<()> {
         };
 
         Diagnostic::error().with_message(message).with_labels(vec![
-            Label::primary((), location.get_range().unwrap())
+            Label::primary((), location.get_span().unwrap())
                 .with_message(format!("Expected {expected}, found {found_name}")),
             Label::secondary((), ctx_span).with_message(format!("Required {}", ctx_msg)),
         ])

@@ -1,6 +1,8 @@
-use std::{fmt::Display, ops::Range, rc::Rc};
+use std::{fmt::Display, rc::Rc};
 
 use codespan::{ByteIndex, Span};
+
+use crate::ast::MaybeSpanned;
 
 #[rustfmt::skip]
 #[derive(Clone, Debug, PartialEq)]
@@ -149,11 +151,11 @@ pub enum ErrorLocation {
     Eof(Option<ByteIndex>),
 }
 
-impl ErrorLocation {
-    pub fn get_range(&self) -> Option<Range<usize>> {
+impl MaybeSpanned for ErrorLocation {
+    fn get_span(&self) -> Option<Span> {
         match self {
-            Self::Token(t) => t.span.map(Into::into),
-            Self::Eof(Some(b)) => Some(b.to_usize()..b.to_usize()),
+            Self::Token(t) => t.span,
+            Self::Eof(Some(b)) => Some(Span::new(*b, *b)),
             Self::Eof(None) => None,
         }
     }

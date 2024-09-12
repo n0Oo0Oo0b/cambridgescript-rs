@@ -4,6 +4,7 @@ use std::rc::Rc;
 use codespan::{ByteIndex, Span};
 
 use crate::ast::*;
+use crate::interpreter::{BoxEval, BoxExec};
 use crate::scanner::{ScanResult, Scanner, ScannerError};
 use crate::token::{ErrorLocation, Token, TokenType};
 
@@ -37,7 +38,6 @@ enum Precedence {
     Unary,
     Exponent,
     Call,
-    Assignable,
     Primary,
 }
 
@@ -70,6 +70,11 @@ impl Parser {
     }
 }
 
+type PrefixRule<S> = fn(&mut Parser, &mut S) -> ParseResult<BoxEval>;
+type InfixRule<S> = fn(&mut Parser, left: BoxEval, &mut S) -> ParseResult<BoxEval>;
+
+// Helpers
+
 macro_rules! force_consume {
     ($self:ident, $stream:ident; $ttype:expr) => {
         $stream
@@ -93,21 +98,17 @@ macro_rules! parse_block {
         while !matches!($stream.peek(), Some($end)) {
             items.push($self.parse_stmt($stream)?);
         }
-        Ok(Block(items))
+        Ok(items.into_boxed_slice())
     }};
     ($self:ident, $stream:expr) => {{
         let mut items = Vec::new();
         while $stream.peek().is_some() {
             items.push($self.parse_stmt($stream)?);
         }
-        Ok(Block(items))
+        Ok(items.into_boxed_slice())
     }};
 }
 
-type PrefixRule<S> = fn(&mut Parser, &mut S) -> ParseResult<Expr>;
-type InfixRule<S> = fn(&mut Parser, left: Box<Expr>, &mut S) -> ParseResult<Expr>;
-
-/// Helpers
 impl Parser {
     fn make_error<S: TokenStream>(&self, stream: &mut S, kind: ParseErrorKind) -> ParseError {
         ParseError {
@@ -118,6 +119,14 @@ impl Parser {
             },
             kind,
         }
+    }
+
+    fn get_ident_handle(&mut self, name: Rc<str>) -> usize {
+        *self
+            .ident_map
+            .try_insert(name, self.ident_map.len())
+            .as_deref()
+            .unwrap_or_else(|e| e.entry.get())
     }
 }
 
@@ -160,35 +169,27 @@ impl Parser {
         })
     }
 
-    fn literal<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
-        let val = match stream.advance().expect("Literal token") {
-            token_of!(CharLiteral(c)) => c.into(),
-            token_of!(StringLiteral(s)) => s.into(),
-            token_of!(IntegerLiteral(i)) => i.into(),
-            token_of!(RealLiteral(r)) => r.into(),
-            token_of!(BooleanLiteral(b)) => b.into(),
-            t => panic!("Invalid literal {t:?}"),
-        };
-        Ok(Expr::Literal(val))
+    fn literal<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<BoxEval> {
+        let token = stream.advance().expect("Literal token");
+        Ok(Box::new(expr::Literal {
+            value: token.type_.try_into().expect("Literal token"),
+            span: token.span,
+        }))
     }
 
-    fn ident<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
-        let ident = match stream.advance() {
+    fn ident<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<BoxEval> {
+        let (ident, span) = match stream.advance() {
             Some(Token {
                 type_: TokenType::Identifier(i),
-                ..
-            }) => i,
+                span,
+            }) => (i, span),
             _ => panic!("ident() called without identifier token"),
         };
-        let handle = *self
-            .ident_map
-            .try_insert(ident, self.ident_map.len())
-            .as_deref()
-            .unwrap_or_else(|e| e.entry.get());
-        Ok(Expr::Identifier { handle })
+        let handle = self.get_ident_handle(ident);
+        Ok(Box::new(expr::Identifier { handle, span }))
     }
 
-    fn grouping<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
+    fn grouping<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<BoxEval> {
         // Propagate errors early
         self.cur_ctx = (
             "close paren",
@@ -199,38 +200,36 @@ impl Parser {
         Ok(expr)
     }
 
-    fn unary<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
-        let op = match stream.advance().expect("Unary operator") {
-            token_of!(Minus) => UnaryOp::Neg,
-            token_of!(Not) => UnaryOp::Not,
+    fn unary<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<BoxEval> {
+        let (op, op_span) = match stream.advance().expect("Unary operator") {
+            Token {
+                type_: TokenType::Minus,
+                span,
+            } => (UnaryOp::Neg, span),
+            Token {
+                type_: TokenType::Not,
+                span,
+            } => (UnaryOp::Not, span),
             t => panic!("Invalid unary operator {t:?}"),
         };
-        let right = Box::new(self.parse_precedence(
-            stream,
-            self.cur_prec.next(),
-            "after unary operator",
-        )?);
-        Ok(Expr::Unary { op, right })
+        let right = self.parse_precedence(stream, self.cur_prec.next(), "after unary operator")?;
+        Ok(Box::new(expr::UnaryExpr { op, right, op_span }))
     }
 
     fn function_call<S: TokenStream>(
         &mut self,
-        left: Box<Expr>,
+        _left: BoxEval,
         stream: &mut S,
-    ) -> ParseResult<Expr> {
+    ) -> ParseResult<BoxEval> {
         self.cur_ctx = (
             "function call paren",
             stream.advance().expect("LParen").span,
         );
         force_consume!(self, stream; TokenType::RParen);
-        // TODO: function parameters
-        Ok(Expr::FunctionCall {
-            function: left,
-            args: vec![],
-        })
+        todo!("Function call parsing")
     }
 
-    fn binary<S: TokenStream>(&mut self, left: Box<Expr>, stream: &mut S) -> ParseResult<Expr> {
+    fn binary<S: TokenStream>(&mut self, left: BoxEval, stream: &mut S) -> ParseResult<BoxEval> {
         let op = match stream.advance().expect("Binary operator") {
             token_of!(And) => BinaryOp::And,
             token_of!(Or) => BinaryOp::Or,
@@ -247,12 +246,8 @@ impl Parser {
             token_of!(Greater) => BinaryOp::Gt,
             t => panic!("Invalid binary operator {t:?}"),
         };
-        let right = Box::new(self.parse_precedence(
-            stream,
-            self.cur_prec.next(),
-            "after binary operator",
-        )?);
-        Ok(Expr::Binary { left, op, right })
+        let right = self.parse_precedence(stream, self.cur_prec.next(), "after binary operator")?;
+        Ok(Box::new(expr::BinaryExpr { left, op, right }))
     }
 
     fn parse_precedence<S: TokenStream>(
@@ -260,7 +255,7 @@ impl Parser {
         stream: &mut S,
         prec: Precedence,
         _context: &'static str,
-    ) -> ParseResult<Expr> {
+    ) -> ParseResult<BoxEval> {
         let unary_func: PrefixRule<S>;
         match stream.peek().and_then(|t| Self::get_prefix_rule(t.type_)) {
             Some(t) => (unary_func, self.cur_prec) = t,
@@ -275,28 +270,28 @@ impl Parser {
                 Some(rule) => (binary_func, self.cur_prec) = rule,
                 None => break,
             };
-            res = binary_func(self, Box::new(res), stream)?;
+            res = binary_func(self, res, stream)?;
         }
         Ok(res)
     }
 
-    pub fn parse_expr<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
+    pub fn parse_expr<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<BoxEval> {
         self.parse_precedence(stream, Precedence::LogicOr, "expression")
     }
 }
 
 /// Statement parsing
 impl Parser {
-    fn arguments<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Vec<Expr>> {
+    fn arguments<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Box<[BoxEval]>> {
         let mut items = vec![self.parse_expr(stream)?];
         while stream.consume(TokenType::Comma).is_some() {
             items.push(self.parse_expr(stream)?);
         }
-        Ok(items)
+        Ok(items.into())
     }
 
     #[inline]
-    fn if_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
+    fn if_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<BoxExec> {
         self.cur_ctx = (
             "after if condition",
             stream.consume(TokenType::If).expect("IF").span,
@@ -307,19 +302,19 @@ impl Parser {
         let else_branch = if stream.consume(TokenType::Else).is_some() {
             parse_block!(self, stream; token_of!(EndIf))?
         } else {
-            Block::default()
+            Box::new([])
         };
         self.cur_ctx.0 = "after if statement";
         force_consume!(self, stream; TokenType::EndIf);
-        Ok(Stmt::If {
+        Ok(Box::new(stmt::If {
             condition,
             then_branch,
             else_branch,
-        })
+        }))
     }
 
     #[inline]
-    fn repeat_until<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
+    fn repeat_until<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<BoxExec> {
         self.cur_ctx = (
             "after repeat-until condition",
             stream.consume(TokenType::Repeat).expect("REPEAT").span,
@@ -327,10 +322,14 @@ impl Parser {
         let body = parse_block!(self, stream; token_of!(Until))?;
         force_consume!(self, stream; TokenType::Until);
         let condition = self.parse_expr(stream)?;
-        Ok(Stmt::RepeatUntil { body, condition })
+        Ok(Box::new(stmt::ConditionalLoop {
+            body,
+            condition,
+            post_condition: true,
+        }))
     }
 
-    pub fn parse_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
+    pub fn parse_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<BoxExec> {
         match stream
             .peek()
             .ok_or_else(|| self.make_error(stream, ParseErrorKind::ExpectedStatement))?
@@ -344,32 +343,45 @@ impl Parser {
                 let body = parse_block!(self, stream; token_of!(EndWhile))?;
                 self.cur_ctx.0 = "after while loop";
                 force_consume!(self, stream; TokenType::EndWhile);
-                Ok(Stmt::While { condition, body })
+                Ok(Box::new(stmt::ConditionalLoop {
+                    condition,
+                    body,
+                    post_condition: false,
+                }))
             }
+
             token_of!(Output) => {
                 stream.advance();
-                Ok(Stmt::Output(self.arguments(stream)?))
+                Ok(Box::new(stmt::Output(self.arguments(stream)?)))
             }
             token_of!(Input) => {
                 stream.advance();
-                Ok(Stmt::Input(self.arguments(stream)?))
+                Ok(Box::new(stmt::Input(self.arguments(stream)?)))
             }
+
             // Try to interpret as assignment
             // NOTE: no consume guarantees?
-            _ => match self.parse_precedence(stream, Precedence::Assignable, "") {
-                Ok(target) => {
+            _ => match stream.peek() {
+                Some(Token {
+                    type_: TokenType::Identifier(i),
+                    span,
+                }) => {
                     // TODO: update after spanned expr
                     self.cur_ctx = ("for assignment", Some(Span::initial()));
                     force_consume!(self, stream; TokenType::LArrow);
                     let value = self.parse_expr(stream)?;
-                    Ok(Stmt::Assignment { target, value })
+                    let target = expr::Identifier {
+                        handle: self.get_ident_handle(i),
+                        span,
+                    };
+                    Ok(Box::new(stmt::Assignment { target, value }))
                 }
-                Err(_) => Err(self.make_error(stream, ParseErrorKind::ExpectedStatement)),
+                _ => Err(self.make_error(stream, ParseErrorKind::ExpectedStatement)),
             },
         }
     }
 
-    pub fn parse_program<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Block> {
+    pub fn parse_program<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Box<[BoxExec]>> {
         parse_block!(self, stream)
     }
 }

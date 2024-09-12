@@ -1,14 +1,7 @@
-use codespan_reporting::{
-    files::SimpleFile,
-    term::{
-        self,
-        termcolor::{ColorChoice, StandardStream},
-    },
-};
-use std::{
-    collections::HashMap,
-    io::{Cursor, Read},
-};
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use codespan_reporting::{files::SimpleFile, term};
+use std::io::{Cursor, Read, Write};
+use std::{collections::HashMap, fmt};
 
 use crate::{
     ast::Value,
@@ -16,7 +9,7 @@ use crate::{
     scanner::{Scanner, ScannerError},
 };
 
-use super::{eval::Eval, exec::Exec};
+use super::Exec;
 
 #[derive(Debug, Clone)]
 pub enum RuntimeError {
@@ -66,9 +59,36 @@ impl TryFrom<Value> for bool {
 }
 
 #[derive(Default)]
-pub(super) struct ProgramState {
-    pub variables: HashMap<usize, Option<Value>>,
+pub(crate) struct ProgramState {
+    variables: HashMap<usize, Option<Value>>,
     pub(super) stdout: Vec<u8>,
+}
+
+impl ProgramState {
+    pub fn get_variable(&self, handle: usize) -> RuntimeResult<Value> {
+        Ok(self
+            .variables
+            .get(&handle)
+            .ok_or(RuntimeError::UndeclaredVariable(handle))?
+            .as_ref()
+            .ok_or(RuntimeError::UndefinedVariable(handle))?
+            .clone())
+    }
+
+    pub fn set_variable(&mut self, handle: usize, value: Value) -> RuntimeResult<()> {
+        self.variables.insert(handle, Some(value));
+        Ok(())
+    }
+
+    pub(super) fn write(&mut self, thing: impl AsRef<str>) {
+        self.stdout
+            .write_all(thing.as_ref().as_bytes())
+            .expect("Failed to output");
+    }
+
+    pub(super) fn write_fmt(&mut self, fmt: fmt::Arguments<'_>) {
+        self.stdout.write_fmt(fmt).expect("Failed to output");
+    }
 }
 
 pub struct Interpreter {

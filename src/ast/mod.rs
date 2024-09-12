@@ -1,9 +1,12 @@
-#![allow(unused)] // TODO: remove once everything is implemented
+// TODO: remove once everything is implemented
+#![allow(unused)]
 
-mod expr;
-mod stmt;
+mod expression;
+mod spans;
+mod statement;
 mod types;
 
-pub use expr::*;
-pub use stmt::*;
+pub use expression::*;
+pub use spans::*;
+pub use statement::*;
 pub use types::*;
