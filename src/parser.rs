@@ -1,23 +1,24 @@
-use codespan::Span;
+use codespan::{ByteIndex, Span};
 
 use crate::ast::*;
-use crate::scanner::{ScanResult, ScannerError};
-use crate::token::{Token, TokenType};
+use crate::scanner::{ScanResult, Scanner, ScannerError};
+use crate::token::{ErrorLocation, Token, TokenType};
 
 #[derive(Debug, Clone)]
-pub enum ParseError {
-    UnexpectedToken {
-        context: (&'static str, Option<Span>),
-        expected: TokenType,
-        actual: Option<Token>,
-    },
-    ExpectedExpression {
-        context: (&'static str, Option<Span>),
-        actual: Option<Token>,
-    },
+pub enum ParseErrorKind {
+    UnexpectedToken(TokenType),
+    ExpectedExpression,
     ExpectedStatement,
 }
 
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub context: ParseContext,
+    pub location: ErrorLocation,
+    pub kind: ParseErrorKind,
+}
+
+type ParseContext = (&'static str, Option<Span>);
 pub type ParseResult<T> = Result<T, ParseError>;
 
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
@@ -51,26 +52,23 @@ impl Precedence {
 #[derive(Debug)]
 pub struct Parser {
     cur_prec: Precedence,
-    // TODO: store current expression here?
+    cur_ctx: ParseContext,
 }
 
 impl Parser {
     pub fn new() -> Self {
         Self {
             cur_prec: Precedence::None,
+            cur_ctx: ("", None),
         }
     }
 }
 
 macro_rules! force_consume {
-    ($stream:ident, $ttype:expr, $context:literal) => {
+    ($self:ident, $stream:ident; $ttype:expr) => {
         $stream
             .consume($ttype)
-            .ok_or_else(|| ParseError::UnexpectedToken {
-                context: ($context, $stream.peek().map(|t| t.span.unwrap())),
-                expected: $ttype,
-                actual: $stream.peek(),
-            })?;
+            .ok_or_else(|| $self.make_error($stream, ParseErrorKind::UnexpectedToken($ttype)))?;
     };
 }
 
@@ -83,8 +81,39 @@ macro_rules! token_of {
     };
 }
 
+macro_rules! parse_block {
+    ($self:ident, $stream:expr; $end:pat) => {{
+        let mut items = Vec::new();
+        while !matches!($stream.peek(), Some($end)) {
+            items.push($self.parse_stmt($stream)?);
+        }
+        Ok(Block(items))
+    }};
+    ($self:ident, $stream:expr) => {{
+        let mut items = Vec::new();
+        while $stream.peek().is_some() {
+            items.push($self.parse_stmt($stream)?);
+        }
+        Ok(Block(items))
+    }};
+}
+
 type PrefixRule<S> = fn(&mut Parser, &mut S) -> ParseResult<Expr>;
 type InfixRule<S> = fn(&mut Parser, left: Box<Expr>, &mut S) -> ParseResult<Expr>;
+
+/// Helpers
+impl Parser {
+    fn make_error<S: TokenStream>(&self, stream: &mut S, kind: ParseErrorKind) -> ParseError {
+        ParseError {
+            context: self.cur_ctx,
+            location: match stream.peek() {
+                Some(t) => t.into(),
+                None => ErrorLocation::Eof(stream.eof_index()),
+            },
+            kind,
+        }
+    }
+}
 
 /// Expression parsing
 impl Parser {
@@ -143,9 +172,12 @@ impl Parser {
 
     fn grouping<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
         // Propagate errors early
-        stream.consume(TokenType::LParen).expect("Grouping");
+        self.cur_ctx = (
+            "close paren",
+            stream.consume(TokenType::LParen).expect("Grouping").span,
+        );
         let expr = self.parse_expr(stream)?;
-        force_consume!(stream, TokenType::RParen, "after expression");
+        force_consume!(self, stream; TokenType::RParen);
         Ok(expr)
     }
 
@@ -168,8 +200,11 @@ impl Parser {
         left: Box<Expr>,
         stream: &mut S,
     ) -> ParseResult<Expr> {
-        stream.advance().expect("LParen");
-        force_consume!(stream, TokenType::RParen, "function call paren");
+        self.cur_ctx = (
+            "function call paren",
+            stream.advance().expect("LParen").span,
+        );
+        force_consume!(self, stream; TokenType::RParen);
         // TODO: function parameters
         Ok(Expr::FunctionCall {
             function: left,
@@ -205,18 +240,13 @@ impl Parser {
     fn parse_precedence<S: TokenStream>(
         &mut self,
         prec: Precedence,
-        context: &'static str,
+        _context: &'static str,
         stream: &mut S,
     ) -> ParseResult<Expr> {
         let unary_func: PrefixRule<S>;
         match stream.peek().and_then(|t| Self::get_prefix_rule(t.type_)) {
             Some(t) => (unary_func, self.cur_prec) = t,
-            None => {
-                return Err(ParseError::ExpectedExpression {
-                    context: (context, None),
-                    actual: stream.peek(),
-                })
-            }
+            None => return Err(self.make_error(stream, ParseErrorKind::ExpectedExpression)),
         };
         let mut res = unary_func(self, stream)?;
 
@@ -249,16 +279,20 @@ impl Parser {
 
     #[inline]
     fn if_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
-        stream.consume(TokenType::If).expect("IF");
+        self.cur_ctx = (
+            "after if condition",
+            stream.consume(TokenType::If).expect("IF").span,
+        );
         let condition = self.parse_expr(stream)?;
-        force_consume!(stream, TokenType::Then, "after IF condition");
-        let then_branch = self.parse_block(stream)?;
+        force_consume!(self, stream; TokenType::Then);
+        let then_branch = parse_block!(self, stream; token_of!(Else) | token_of!(EndIf))?;
         let else_branch = if stream.consume(TokenType::Else).is_some() {
-            self.parse_block(stream)?
+            parse_block!(self, stream; token_of!(EndIf))?
         } else {
             Block::default()
         };
-        force_consume!(stream, TokenType::EndIf, "at the end of the IF statement");
+        self.cur_ctx.0 = "after if statement";
+        force_consume!(self, stream; TokenType::EndIf);
         Ok(Stmt::If {
             condition,
             then_branch,
@@ -268,23 +302,30 @@ impl Parser {
 
     #[inline]
     fn repeat_until<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
-        stream.consume(TokenType::Repeat).expect("REPEAT");
-        let body = self.parse_block(stream)?;
-        force_consume!(stream, TokenType::Until, "after REPEAT-UNTIL condition");
+        self.cur_ctx = (
+            "after repeat-until condition",
+            stream.consume(TokenType::Repeat).expect("REPEAT").span,
+        );
+        let body = parse_block!(self, stream; token_of!(Until))?;
+        force_consume!(self, stream; TokenType::Until);
         let condition = self.parse_expr(stream)?;
         Ok(Stmt::RepeatUntil { body, condition })
     }
 
     pub fn parse_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
-        match stream.peek().ok_or(ParseError::ExpectedStatement)? {
+        match stream
+            .peek()
+            .ok_or(self.make_error(stream, ParseErrorKind::ExpectedStatement))?
+        {
             token_of!(If) => self.if_stmt(stream),
             token_of!(Repeat) => self.repeat_until(stream),
             token_of!(While) => {
-                stream.advance();
+                self.cur_ctx = ("after while condition", stream.advance().unwrap().span);
                 let condition = self.parse_expr(stream)?;
-                force_consume!(stream, TokenType::Do, "after WHILE condition");
-                let body = self.parse_block(stream)?;
-                force_consume!(stream, TokenType::EndWhile, "after while loop");
+                force_consume!(self, stream; TokenType::Do);
+                let body = parse_block!(self, stream; token_of!(EndWhile))?;
+                self.cur_ctx.0 = "after while loop";
+                force_consume!(self, stream; TokenType::EndWhile);
                 Ok(Stmt::While { condition, body })
             }
             token_of!(Output) => {
@@ -295,16 +336,12 @@ impl Parser {
                 stream.advance();
                 Ok(Stmt::Input(self.arguments(stream)?))
             }
-            _ => Err(ParseError::ExpectedStatement),
+            _ => Err(self.make_error(stream, ParseErrorKind::ExpectedStatement)),
         }
     }
 
-    pub fn parse_block<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Block> {
-        let mut items = Vec::new();
-        while let Ok(stmt) = self.parse_stmt(stream) {
-            items.push(stmt);
-        }
-        Ok(Block(items))
+    pub fn parse_program<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Block> {
+        parse_block!(self, stream)
     }
 }
 
@@ -319,6 +356,10 @@ pub trait TokenStream {
         } else {
             None
         }
+    }
+
+    fn eof_index(&self) -> Option<ByteIndex> {
+        None
     }
 }
 
@@ -361,10 +402,7 @@ where
     }
 }
 
-impl<I> TokenStream for TokenExtractor<I>
-where
-    I: Iterator<Item = ScanResult>,
-{
+impl<'s> TokenStream for TokenExtractor<Scanner<'s, 's>> {
     fn peek(&mut self) -> Option<Token> {
         // Manual version of get_or_insert_with due to borrow checking rules
         if self.previous.is_none() {
@@ -381,5 +419,10 @@ where
             .unwrap_or_else(|| self.next_inner())
             .as_ref()
             .cloned()
+    }
+
+    fn eof_index(&self) -> Option<ByteIndex> {
+        let len = self.stream.source.len() as u32;
+        Some(ByteIndex(len))
     }
 }

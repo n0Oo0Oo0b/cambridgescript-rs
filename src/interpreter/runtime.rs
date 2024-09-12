@@ -115,14 +115,16 @@ impl Interpreter {
     }
 
     pub fn exec_src(&mut self, source: &str) -> InterpretResult<()> {
-        let stmt = self
-            .parse(source, Parser::parse_stmt)
+        let block = self
+            .parse(source, Parser::parse_program)
             .inspect_err(|e| self.show_diagnostic(source, e))?;
-        stmt.exec(&mut self.state)
+        block
+            .exec(&mut self.state)
             .map_err(|e| vec![e.into()])
             .inspect_err(|e| self.show_diagnostic(source, e))
     }
 
+    #[allow(unused)]
     pub fn eval_src(&mut self, source: &str) -> InterpretResult<Value> {
         let expr = self.parse(source, Parser::parse_expr)?;
         expr.eval(&self.state).map_err(|e| vec![e.into()])

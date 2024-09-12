@@ -20,7 +20,7 @@ pub struct Scanner<'src, 'a>
 where
     'src: 'a,
 {
-    source: &'src str,
+    pub source: &'src str,
     iter: Peekable<Chars<'a>>,
     start: u32,
     current: u32,

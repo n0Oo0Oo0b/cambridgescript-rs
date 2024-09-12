@@ -1,17 +1,11 @@
-use std::ops::Range;
-
-use codespan::Span;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 
-use crate::{parser::ParseError, scanner::ScannerError, token::Token};
+use crate::{
+    parser::{ParseError, ParseErrorKind},
+    scanner::ScannerError,
+};
 
 use super::runtime::{InterpretError, RuntimeError};
-
-#[inline(always)]
-fn range_after(span: Span) -> Range<usize> {
-    let end = span.end().to_usize();
-    end..end
-}
 
 impl From<ScannerError> for Diagnostic<()> {
     fn from(value: ScannerError) -> Self {
@@ -24,7 +18,7 @@ impl From<ScannerError> for Diagnostic<()> {
             ScannerError::UnterminatedString(span) => Diagnostic::error()
                 .with_message("Unterminated string")
                 .with_labels(vec![Label::primary((), span)
-                    .with_message("Another `\"` was expected to close the string")]),
+                    .with_message("Another `\"` is needed to close the string")]),
             ScannerError::InvalidRealLiteral(span, message) => Diagnostic::error()
                 .with_message("Invalid real value")
                 .with_labels(vec![Label::primary((), span).with_message(message)]),
@@ -36,42 +30,38 @@ impl From<ScannerError> for Diagnostic<()> {
     }
 }
 
-fn error_labels(
-    expected: &str,
-    token: Option<Token>,
-    context: (&'static str, Option<Span>),
-) -> Vec<Label<()>> {
-    let (ctx_msg, ctx_span) = (context.0, context.1.unwrap());
-    let (found_span, found_name) = match &token {
-        Some(t) => (t.span.unwrap().into(), t.type_.to_string()),
-        None => (range_after(ctx_span), "nothing".into()),
-    };
-    vec![
-        Label::primary((), found_span)
-            .with_message(format!("Expected {expected}, found {found_name}")),
-        Label::secondary((), ctx_span).with_message(format!("Required {}", ctx_msg)),
-    ]
-}
-
 impl From<ParseError> for Diagnostic<()> {
     fn from(value: ParseError) -> Self {
-        match value {
-            ParseError::UnexpectedToken {
-                expected,
-                actual,
-                context,
-            } => Diagnostic::error()
-                .with_message(
-                    #[rustfmt::skip]
-                        if actual.is_some() { "Unexpected token" }
-                        else { "Unexpected EOF (end of file)" },
-                )
-                .with_labels(error_labels(&expected.to_string(), actual, context)),
-            ParseError::ExpectedExpression { context, actual } => Diagnostic::error()
-                .with_message("Unexpected expression")
-                .with_labels(error_labels("expression", actual, context)),
-            _ => todo!(),
-        }
+        let ParseError {
+            context,
+            location,
+            kind,
+        } = value;
+        let (ctx_msg, ctx_span) = (context.0, context.1.unwrap());
+
+        let (message, expected, found_name) = match kind {
+            ParseErrorKind::UnexpectedToken(expected) => (
+                "Unexpected token or EOF",
+                expected.to_string(),
+                location.to_string(),
+            ),
+            ParseErrorKind::ExpectedExpression => (
+                "Expected expression",
+                "expression".to_string(),
+                location.to_string(),
+            ),
+            ParseErrorKind::ExpectedStatement => (
+                "Expected statement",
+                "statement".to_string(),
+                location.to_string(),
+            ),
+        };
+
+        Diagnostic::error().with_message(message).with_labels(vec![
+            Label::primary((), location.get_range().unwrap())
+                .with_message(format!("Expected {expected}, found {found_name}")),
+            Label::secondary((), ctx_span).with_message(format!("Required {}", ctx_msg)),
+        ])
     }
 }
 

@@ -1,6 +1,6 @@
-use std::{fmt::Display, rc::Rc};
+use std::{fmt::Display, ops::Range, rc::Rc};
 
-use codespan::Span;
+use codespan::{ByteIndex, Span};
 
 #[rustfmt::skip]
 #[derive(Clone, Debug, PartialEq)]
@@ -140,5 +140,36 @@ impl Token {
 impl From<TokenType> for Token {
     fn from(value: TokenType) -> Self {
         Self::without_span(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ErrorLocation {
+    Token(Token),
+    Eof(Option<ByteIndex>),
+}
+
+impl ErrorLocation {
+    pub fn get_range(&self) -> Option<Range<usize>> {
+        match self {
+            Self::Token(t) => t.span.map(Into::into),
+            Self::Eof(Some(b)) => Some(b.to_usize()..b.to_usize()),
+            Self::Eof(None) => None,
+        }
+    }
+}
+
+impl Display for ErrorLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Token(t) => write!(f, "{}", t.type_),
+            Self::Eof(_) => write!(f, "EOF (end of file)"),
+        }
+    }
+}
+
+impl From<Token> for ErrorLocation {
+    fn from(value: Token) -> Self {
+        Self::Token(value)
     }
 }
