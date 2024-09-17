@@ -1,22 +1,30 @@
+#![feature(
+    str_lines_remainder,
+    stmt_expr_attributes,
+    try_trait_v2,
+    read_buf,
+    map_try_insert
+)]
+
 use std::io;
-use std::io::prelude::*;
+
+use interpreter::Interpreter;
 
 mod ast;
+mod interpreter;
 mod parser;
 mod scanner;
+mod token;
+
+const SOURCE: &str = r#"
+a <-
+OUTPUT a + 1
+a <- a + 1
+OUTPUT a + 10
+"#;
 
 fn main() {
-    let mut input = String::new();
-    let _ = io::stdin().read_to_string(&mut input);
-
-    let (tokens, errors) = scanner::scan(input.as_str());
-    for token in &tokens {
-        dbg!(token);
-    }
-    for error in &errors {
-        dbg!(error);
-    }
-
-    let block = parser::parse_block(tokens);
-    dbg!(&block);
+    let mut i = Interpreter::new();
+    let _ = i.exec_src(SOURCE);
+    io::copy(&mut i.get_stdout(), &mut io::stdout()).expect("Failed to output to stdout");
 }

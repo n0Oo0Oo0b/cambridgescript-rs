@@ -1,454 +1,457 @@
-use crate::ast::*;
-use crate::scanner::{Token, TokenType};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use codespan::{ByteIndex, Span};
+
+use crate::ast::*;
+use crate::scanner::{ScanResult, Scanner, ScannerError};
+use crate::token::{ErrorLocation, Token, TokenType};
+
+#[derive(Debug, Clone)]
+pub enum ParseErrorKind {
+    UnexpectedToken(TokenType),
+    ExpectedExpression,
+    ExpectedStatement,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub context: ParseContext,
+    pub location: ErrorLocation,
+    pub kind: ParseErrorKind,
+}
+
+type ParseContext = (&'static str, Option<Span>);
+pub type ParseResult<T> = Result<T, ParseError>;
+
+#[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
+enum Precedence {
+    None,
+    LogicOr,
+    LogicAnd,
+    LogicNot,
+    Equality,
+    Comparison,
+    Term,
+    Factor,
+    Unary,
+    Exponent,
+    Call,
+    Assignable,
+    Primary,
+}
+
+impl Precedence {
+    fn next(self) -> Self {
+        if self == Self::Primary {
+            panic!("Precedence::Primary is the highest precedence")
+        }
+        // Safety: transmuting x+1 is safe because x comes from a non-Primary variant
+        unsafe { std::mem::transmute::<u8, Self>(self as u8 + 1) }
+    }
+}
+
+/// Parses an iterator of tokens into an AST.
+/// I've tried to separate this from Scanner as much as possible.
 #[derive(Debug)]
-pub enum ParserError {
-    UnexpectedToken(Token),
-    UnexpectedEOF,
-}
-
-struct TokenBuffer {
-    items: Box<[Token]>,
-    current: usize,
-}
-
-macro_rules! unexpected_token {
-    ($tokens:expr) => {
-        Err(ParserError::UnexpectedToken($tokens.current_token().unwrap().clone()))
-    };
-}
-
-impl TokenBuffer {
-    fn current_token(&self) -> Option<&Token> {
-        if self.current < self.items.len() {
-            Some(&self.items[self.current])
-        } else {
-            None
-        }
-    }
-
-    fn peek(&self) -> Option<TokenType> {
-        self.current_token().map(|t| t.type_.clone())
-    }
-
-    fn next(&mut self) -> Option<TokenType> {
-        let res = self.peek();
-        if res.is_some() {
-            self.current += 1;
-        };
-        res
-    }
-
-    fn consume(&mut self, type_: &TokenType) -> Result<(), ParserError> {
-        let next_token = &match self.peek() {
-            Some(t) => t,
-            None => return Err(ParserError::UnexpectedEOF),
-        };
-        if next_token == type_ {
-            self.next();
-            Ok(())
-        } else {
-            unexpected_token!(self)
-        }
-    }
-
-    fn next_if_equal(&mut self, other: &TokenType) -> Option<TokenType> {
-        if &self.peek()? == other {
-            self.next()
-        } else {
-            None
-        }
-    }
-
-    fn backtrack(&mut self) {
-        if self.current > 0 {
-            self.current -= 1;
-        }
-    }
-}
-
-impl FromIterator<Token> for TokenBuffer {
-    fn from_iter<T: IntoIterator<Item = Token>>(iter: T) -> Self {
-        TokenBuffer {
-            items: iter.into_iter().collect(),
-            current: 0,
-        }
-    }
-}
-
-macro_rules! binary_op {
-    ($name:ident : $parent:ident { $( $token:ident => $op:expr ),+ $(,)? } ) => {
-        fn $name(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-            let mut left = self.$parent(tokens)?;
-            loop {
-                let op = match tokens.peek() {
-                    $(
-                        Some(TokenType::$token) => $op,
-                    )+
-                    _ => break,
-                };
-                tokens.next();
-                let right = self.$parent(tokens)?;
-                left = Expr::Binary {
-                    left: Box::new(left),
-                    operator: op,
-                    right: Box::new(right),
-                }
-            };
-            Ok(left)
-        }
-    }
-}
-
-macro_rules! comma_separated {
-    ($getter:expr, $tokens:expr) => {{
-        let mut right = Vec::new();
-        loop {
-            right.push($getter?);
-            match $tokens.peek() {
-                Some(TokenType::Comma) => {
-                    $tokens.next();
-                }
-                Some(_) => break Ok(right),
-                None => break Err(ParserError::UnexpectedEOF),
-            }
-        }
-    }};
-    ($getter:expr, $tokens:expr; $end:ident) => {
-        'comma_sep: {
-            if $tokens.next_if_equal(&TokenType::$end).is_some() {
-                break 'comma_sep Ok(Vec::new());
-            }
-            let mut right = Vec::new();
-            loop {
-                right.push($getter?);
-                match $tokens.next() {
-                    Some(TokenType::$end) => {
-                        break Ok(right);
-                    }
-                    Some(TokenType::Comma) => {}
-                    Some(_) => {
-                        $tokens.backtrack();
-                        break unexpected_token!($tokens);
-                    }
-                    None => break Err(ParserError::UnexpectedEOF),
-                }
-            }
-        }
-    };
-}
-
-struct Parser {
-    identifier_map: HashMap<Rc<str>, usize>,
+pub struct Parser {
+    cur_prec: Precedence,
+    cur_ctx: ParseContext,
+    ident_map: HashMap<Rc<str>, usize>,
 }
 
 impl Parser {
-    fn new() -> Self {
-        Parser {
-            identifier_map: HashMap::new(),
+    pub fn new() -> Self {
+        Self {
+            cur_prec: Precedence::None,
+            cur_ctx: ("", None),
+            ident_map: HashMap::new(),
         }
     }
+}
 
-    fn parse_block(&mut self, tokens: &mut TokenBuffer) -> Block {
-        let mut contents = Vec::new();
-        while let Ok(stmt) = self.parse_stmt(tokens) {
-            contents.push(stmt);
+macro_rules! force_consume {
+    ($self:ident, $stream:ident; $ttype:expr) => {
+        $stream
+            .consume($ttype)
+            .ok_or_else(|| $self.make_error($stream, ParseErrorKind::UnexpectedToken($ttype)))?;
+    };
+}
+
+macro_rules! token_of {
+    ($($t:tt)*) => {
+        Token {
+            type_: TokenType::$($t)*,
+            ..
         }
-        Block { contents }
-    }
+    };
+}
 
-    fn parse_stmt(&mut self, tokens: &mut TokenBuffer) -> Result<Stmt, ParserError> {
-        let next_token = match tokens.next() {
-            Some(t) => t,
-            None => return Err(ParserError::UnexpectedEOF),
-        };
-        let res = match next_token {
-            TokenType::Procedure => {
-                let name = self.parse_identifier(tokens)?;
-                let params = self.parse_parameter_list(tokens)?;
-                let body = self.parse_block(tokens);
-                tokens.consume(&TokenType::EndProcedure)?;
-                Stmt::ProcedureDecl {
-                    name,
-                    params,
-                    body,
-                }
-            },
-            TokenType::Function => {
-                let name = self.parse_identifier(tokens)?;
-                let params = self.parse_parameter_list(tokens)?;
-                tokens.consume(&TokenType::Returns)?;
-                let return_type = self.parse_type(tokens)?;
-                let body = self.parse_block(tokens);
-                tokens.consume(&TokenType::EndFunction)?;
-                Stmt::FunctionDecl {
-                    name,
-                    params,
-                    return_type,
-                    body,
-                }
-            },
-            TokenType::If => {
-                let condition = self.parse_expression(tokens)?;
-                tokens.consume(&TokenType::Then)?;
-                let then_branch = self.parse_block(tokens);
-                let else_branch = match tokens.consume(&TokenType::Else) {
-                    Ok(_) => Some(self.parse_block(tokens)),
-                    Err(_) => None
-                };
-                tokens.consume(&TokenType::EndIf)?;
-                Stmt::If {
-                    condition,
-                    then_branch,
-                    else_branch,
-                }
-            },
-            TokenType::Return => Stmt::Return(self.parse_expression(tokens)?),
-            TokenType::Case => unimplemented!(),
-            TokenType::For => {
-                let target = self.parse_assignable(tokens)?;
-                tokens.consume(&TokenType::LArrow)?;
-                let start = self.parse_expression(tokens)?;
-                tokens.consume(&TokenType::To)?;
-                let end = self.parse_expression(tokens)?;
-                let step = match tokens.consume(&TokenType::Step) {
-                    Ok(_) => Some(self.parse_expression(tokens)?),
-                    Err(_) => None,
-                };
-                let body = self.parse_block(tokens);
-                tokens.consume(&TokenType::Next)?;
-                Stmt::ForLoop {
-                    target,
-                    start,
-                    end,
-                    step,
-                    body,
-                }
-            },
-            TokenType::Repeat => {
-                let body = self.parse_block(tokens);
-                tokens.consume(&TokenType::Until)?;
-                let condition = self.parse_expression(tokens)?;
-                Stmt::RepeatUntil { condition, body }
-            }
-            TokenType::While => {
-                let condition = self.parse_expression(tokens)?;
-                tokens.consume(&TokenType::Do)?;
-                let body = self.parse_block(tokens);
-                tokens.consume(&TokenType::EndWhile)?;
-                Stmt::While { condition, body }
-            }
-            TokenType::Declare => {
-                let name = self.parse_identifier(tokens)?;
-                tokens.consume(&TokenType::Colon)?;
-                let type_ = self.parse_type(tokens)?;
-                Stmt::VariableDecl { name, type_ }
-            }
-            TokenType::Constant => {
-                let name = self.parse_identifier(tokens)?;
-                tokens.consume(&TokenType::LArrow)?;
-                let value = match self.parse_primary(tokens)? {
-                    Expr::Literal(l) => l,
-                    _ => return unexpected_token!(tokens),
-                };
-                Stmt::ConstantDecl { name, value }
-            },
-            TokenType::Input => {
-                Stmt::Input(comma_separated!(self.parse_expression(tokens), tokens)?)
-            }
-            TokenType::Output => {
-                Stmt::Output(comma_separated!(self.parse_expression(tokens), tokens)?)
-            }
-            TokenType::Call => unimplemented!(),
-            TokenType::OpenFile => unimplemented!(),
-            TokenType::ReadFile => unimplemented!(),
-            TokenType::WriteFile => unimplemented!(),
-            TokenType::CloseFile => unimplemented!(),
-            _ => {
-                tokens.backtrack();
-                let target = self.parse_assignable(tokens)?;
-                tokens.consume(&TokenType::LArrow)?;
-                let value = self.parse_expression(tokens)?;
-                Stmt::Assignment { target, value }
-            }
-        };
-        Ok(res)
-    }
+macro_rules! parse_block {
+    ($self:ident, $stream:expr; $end:pat) => {{
+        let mut items = Vec::new();
+        while !matches!($stream.peek(), Some($end)) {
+            items.push($self.parse_stmt($stream)?);
+        }
+        Ok(Block(items))
+    }};
+    ($self:ident, $stream:expr) => {{
+        let mut items = Vec::new();
+        while $stream.peek().is_some() {
+            items.push($self.parse_stmt($stream)?);
+        }
+        Ok(Block(items))
+    }};
+}
 
-    fn parse_type(&mut self, tokens: &mut TokenBuffer) -> Result<Type, ParserError> {
-        match tokens.next() {
-            Some(TokenType::Integer) => Ok(Type::Primitive(PrimitiveType::Integer)),
-            Some(TokenType::Real) => Ok(Type::Primitive(PrimitiveType::Real)),
-            Some(TokenType::String) => Ok(Type::Primitive(PrimitiveType::String)),
-            Some(TokenType::Char) => Ok(Type::Primitive(PrimitiveType::Char)),
-            Some(TokenType::Boolean) => Ok(Type::Primitive(PrimitiveType::Boolean)),
-            Some(TokenType::Array) => { unimplemented!() }
-            Some(_) => {
-                tokens.backtrack();
-                unexpected_token!(tokens)
-            }
-            None => Err(ParserError::UnexpectedEOF),
+type PrefixRule<S> = fn(&mut Parser, &mut S) -> ParseResult<Expr>;
+type InfixRule<S> = fn(&mut Parser, left: Box<Expr>, &mut S) -> ParseResult<Expr>;
+
+/// Helpers
+impl Parser {
+    fn make_error<S: TokenStream>(&self, stream: &mut S, kind: ParseErrorKind) -> ParseError {
+        ParseError {
+            context: self.cur_ctx,
+            location: match stream.peek() {
+                Some(t) => t.into(),
+                None => ErrorLocation::Eof(stream.eof_index()),
+            },
+            kind,
         }
     }
+}
 
-    fn parse_expression(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        self.parse_logic_or(tokens)
-    }
-
-    fn parse_parameter(&mut self, tokens: &mut TokenBuffer) -> Result<Parameter, ParserError> {
-        let name = self.parse_identifier(tokens)?;
-        tokens.consume(&TokenType::Colon)?;
-        let type_ = self.parse_type(tokens)?;
-        Ok(Parameter { name, type_ })
-    }
-
-    fn parse_parameter_list(&mut self, tokens: &mut TokenBuffer) -> Result<Option<Vec<Parameter>>, ParserError> {
-        Ok(match tokens.next_if_equal(&TokenType::LParen) {
-            Some(_) => {
-                let params = comma_separated!(self.parse_parameter(tokens), tokens)?;
-                tokens.consume(&TokenType::RParen)?;
-                Some(params)
-            },
-            None => None,
+/// Expression parsing
+impl Parser {
+    #[inline(always)] // Rule tables are only used in parse_precedence
+    fn get_prefix_rule<S: TokenStream>(token: TokenType) -> Option<(PrefixRule<S>, Precedence)> {
+        use TokenType as TT;
+        // Wrapping the whole thing in to avoid needing Some((a, b)) everywhere
+        Some(match token {
+            TT::Minus => (Parser::unary, Precedence::Unary),
+            TT::Not => (Parser::unary, Precedence::LogicNot),
+            TT::LParen => (Parser::grouping, Precedence::Primary),
+            TT::Identifier(_) => (Parser::ident, Precedence::Primary),
+            TT::CharLiteral(_)
+            | TT::StringLiteral(_)
+            | TT::IntegerLiteral(_)
+            | TT::RealLiteral(_)
+            | TT::BooleanLiteral(_) => (Parser::literal, Precedence::Primary),
+            _ => return None,
         })
     }
 
-    fn parse_assignable(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        self.parse_call(tokens)
-    }
-
-    binary_op! {
-        parse_logic_or: parse_logic_and {Or => BinaryOperator::LogicOr}
-    }
-
-    binary_op! {
-        parse_logic_and: parse_logic_not {And => BinaryOperator::LogicAnd}
-    }
-
-    fn parse_logic_not(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        if tokens.consume(&TokenType::Not).is_ok() {
-            Ok(Expr::Unary {
-                operator: UnaryOperator::LogicNot,
-                right: Box::new(self.parse_logic_not(tokens)?),
-            })
-        } else {
-            self.parse_comparison(tokens)
-        }
-    }
-
-    binary_op! {
-        parse_comparison: parse_term {
-            Equal => BinaryOperator::Equal,
-            NotEqual => BinaryOperator::NotEqual,
-            Less => BinaryOperator::Less,
-            LessEqual => BinaryOperator::LessEqual,
-            Greater => BinaryOperator::Greater,
-            GreaterEqual => BinaryOperator::GreaterEqual,
-        }
-    }
-
-    binary_op! {
-        parse_term: parse_factor {
-            Plus => BinaryOperator::Plus,
-            Minus => BinaryOperator::Minus,
-        }
-    }
-
-    binary_op! {
-        parse_factor: parse_call {
-            Star => BinaryOperator::Star,
-            Slash => BinaryOperator::Slash,
-        }
-    }
-
-    fn parse_call(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        let mut left = self.parse_primary(tokens)?;
-        loop {
-            left = match tokens.next() {
-                Some(TokenType::LParen) => {
-                    let right = comma_separated!(self.parse_expression(tokens), tokens; RParen)?;
-                    Expr::FunctionCall {
-                        function: Box::new(left),
-                        args: right,
-                    }
-                }
-                Some(TokenType::LBracket) => {
-                    let right = comma_separated!(self.parse_expression(tokens), tokens; RBracket)?;
-                    Expr::ArrayIndex {
-                        array: Box::new(left),
-                        indexes: right,
-                    }
-                }
-                _ => {
-                    tokens.backtrack();
-                    break;
-                }
-            };
-        }
-        Ok(left)
-    }
-
-    fn parse_primary(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        let next_token = match tokens.next() {
-            Some(t) => t,
-            None => return Err(ParserError::UnexpectedEOF),
-        };
-        let expr = match next_token {
-            TokenType::Identifier(ident) => Expr::Identifier {
-                handle: self.get_ident_handle(ident),
-            },
-            TokenType::CharLiteral(c) => Expr::Literal(Literal::Char(c)),
-            TokenType::StringLiteral(s) => Expr::Literal(Literal::String(s)),
-            TokenType::IntegerLiteral(i) => Expr::Literal(Literal::Integer(i)),
-            TokenType::RealLiteral(r) => Expr::Literal(Literal::Real(r)),
-            TokenType::BooleanLiteral(b) => Expr::Literal(Literal::Boolean(b)),
-            TokenType::LParen => {
-                let inner = self.parse_expression(tokens)?;
-                tokens.consume(&TokenType::RParen)?;
-                inner
+    #[inline(always)]
+    fn get_infix_rule<S: TokenStream>(token: TokenType) -> Option<(InfixRule<S>, Precedence)> {
+        use TokenType as TT;
+        Some(match token {
+            TT::Or => (Parser::binary, Precedence::LogicOr),
+            TT::And => (Parser::binary, Precedence::LogicAnd),
+            TT::Equal | TT::NotEqual => (Parser::binary, Precedence::Equality),
+            TT::Less | TT::Greater | TT::LessEqual | TT::GreaterEqual => {
+                (Parser::binary, Precedence::Comparison)
             }
-            _ => {
-                tokens.backtrack();
-                return unexpected_token!(tokens);
-            }
+            TT::Plus | TT::Minus => (Parser::binary, Precedence::Term),
+            TT::Star | TT::Slash => (Parser::binary, Precedence::Factor),
+            TT::Caret => (Parser::binary, Precedence::Exponent),
+            TT::LParen => (Parser::function_call, Precedence::Call),
+            TT::LBracket => unimplemented!("array indexing"),
+            _ => return None,
+        })
+    }
+
+    fn literal<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
+        let val = match stream.advance().expect("Literal token") {
+            token_of!(CharLiteral(c)) => c.into(),
+            token_of!(StringLiteral(s)) => s.into(),
+            token_of!(IntegerLiteral(i)) => i.into(),
+            token_of!(RealLiteral(r)) => r.into(),
+            token_of!(BooleanLiteral(b)) => b.into(),
+            t => panic!("Invalid literal {t:?}"),
         };
+        Ok(Expr::Literal(val))
+    }
+
+    fn ident<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
+        let ident = match stream.advance() {
+            Some(Token {
+                type_: TokenType::Identifier(i),
+                ..
+            }) => i,
+            _ => panic!("ident() called without identifier token"),
+        };
+        let handle = *self
+            .ident_map
+            .try_insert(ident, self.ident_map.len())
+            .as_deref()
+            .unwrap_or_else(|e| e.entry.get());
+        Ok(Expr::Identifier { handle })
+    }
+
+    fn grouping<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
+        // Propagate errors early
+        self.cur_ctx = (
+            "close paren",
+            stream.consume(TokenType::LParen).expect("Grouping").span,
+        );
+        let expr = self.parse_expr(stream)?;
+        force_consume!(self, stream; TokenType::RParen);
         Ok(expr)
     }
 
-    fn parse_identifier(&mut self, tokens: &mut TokenBuffer) -> Result<Expr, ParserError> {
-        let expr = self.parse_primary(tokens)?;
-        match expr {
-            Expr::Identifier { .. } => {Ok(expr)},
-            _ => unexpected_token!(tokens),
+    fn unary<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
+        let op = match stream.advance().expect("Unary operator") {
+            token_of!(Minus) => UnaryOp::Neg,
+            token_of!(Not) => UnaryOp::Not,
+            t => panic!("Invalid unary operator {t:?}"),
+        };
+        let right = Box::new(self.parse_precedence(
+            stream,
+            self.cur_prec.next(),
+            "after unary operator",
+        )?);
+        Ok(Expr::Unary { op, right })
+    }
+
+    fn function_call<S: TokenStream>(
+        &mut self,
+        left: Box<Expr>,
+        stream: &mut S,
+    ) -> ParseResult<Expr> {
+        self.cur_ctx = (
+            "function call paren",
+            stream.advance().expect("LParen").span,
+        );
+        force_consume!(self, stream; TokenType::RParen);
+        // TODO: function parameters
+        Ok(Expr::FunctionCall {
+            function: left,
+            args: vec![],
+        })
+    }
+
+    fn binary<S: TokenStream>(&mut self, left: Box<Expr>, stream: &mut S) -> ParseResult<Expr> {
+        let op = match stream.advance().expect("Binary operator") {
+            token_of!(And) => BinaryOp::And,
+            token_of!(Or) => BinaryOp::Or,
+            token_of!(Plus) => BinaryOp::Add,
+            token_of!(Minus) => BinaryOp::Sub,
+            token_of!(Star) => BinaryOp::Mul,
+            token_of!(Slash) => BinaryOp::Div,
+            token_of!(Caret) => BinaryOp::Pow,
+            token_of!(Equal) => BinaryOp::Eq,
+            token_of!(NotEqual) => BinaryOp::Ne,
+            token_of!(LessEqual) => BinaryOp::Le,
+            token_of!(GreaterEqual) => BinaryOp::Ge,
+            token_of!(Less) => BinaryOp::Lt,
+            token_of!(Greater) => BinaryOp::Gt,
+            t => panic!("Invalid binary operator {t:?}"),
+        };
+        let right = Box::new(self.parse_precedence(
+            stream,
+            self.cur_prec.next(),
+            "after binary operator",
+        )?);
+        Ok(Expr::Binary { left, op, right })
+    }
+
+    fn parse_precedence<S: TokenStream>(
+        &mut self,
+        stream: &mut S,
+        prec: Precedence,
+        _context: &'static str,
+    ) -> ParseResult<Expr> {
+        let unary_func: PrefixRule<S>;
+        match stream.peek().and_then(|t| Self::get_prefix_rule(t.type_)) {
+            Some(t) => (unary_func, self.cur_prec) = t,
+            None => return Err(self.make_error(stream, ParseErrorKind::ExpectedExpression)),
+        };
+        let mut res = unary_func(self, stream)?;
+
+        loop {
+            let binary_func: InfixRule<S>;
+            match stream.peek().and_then(|t| Self::get_infix_rule(t.type_)) {
+                Some((_, p)) if prec > p => break,
+                Some(rule) => (binary_func, self.cur_prec) = rule,
+                None => break,
+            };
+            res = binary_func(self, Box::new(res), stream)?;
+        }
+        Ok(res)
+    }
+
+    pub fn parse_expr<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Expr> {
+        self.parse_precedence(stream, Precedence::LogicOr, "expression")
+    }
+}
+
+/// Statement parsing
+impl Parser {
+    fn arguments<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Vec<Expr>> {
+        let mut items = vec![self.parse_expr(stream)?];
+        while stream.consume(TokenType::Comma).is_some() {
+            items.push(self.parse_expr(stream)?);
+        }
+        Ok(items)
+    }
+
+    #[inline]
+    fn if_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
+        self.cur_ctx = (
+            "after if condition",
+            stream.consume(TokenType::If).expect("IF").span,
+        );
+        let condition = self.parse_expr(stream)?;
+        force_consume!(self, stream; TokenType::Then);
+        let then_branch = parse_block!(self, stream; token_of!(Else) | token_of!(EndIf))?;
+        let else_branch = if stream.consume(TokenType::Else).is_some() {
+            parse_block!(self, stream; token_of!(EndIf))?
+        } else {
+            Block::default()
+        };
+        self.cur_ctx.0 = "after if statement";
+        force_consume!(self, stream; TokenType::EndIf);
+        Ok(Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+        })
+    }
+
+    #[inline]
+    fn repeat_until<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
+        self.cur_ctx = (
+            "after repeat-until condition",
+            stream.consume(TokenType::Repeat).expect("REPEAT").span,
+        );
+        let body = parse_block!(self, stream; token_of!(Until))?;
+        force_consume!(self, stream; TokenType::Until);
+        let condition = self.parse_expr(stream)?;
+        Ok(Stmt::RepeatUntil { body, condition })
+    }
+
+    pub fn parse_stmt<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Stmt> {
+        match stream
+            .peek()
+            .ok_or_else(|| self.make_error(stream, ParseErrorKind::ExpectedStatement))?
+        {
+            token_of!(If) => self.if_stmt(stream),
+            token_of!(Repeat) => self.repeat_until(stream),
+            token_of!(While) => {
+                self.cur_ctx = ("after while condition", stream.advance().unwrap().span);
+                let condition = self.parse_expr(stream)?;
+                force_consume!(self, stream; TokenType::Do);
+                let body = parse_block!(self, stream; token_of!(EndWhile))?;
+                self.cur_ctx.0 = "after while loop";
+                force_consume!(self, stream; TokenType::EndWhile);
+                Ok(Stmt::While { condition, body })
+            }
+            token_of!(Output) => {
+                stream.advance();
+                Ok(Stmt::Output(self.arguments(stream)?))
+            }
+            token_of!(Input) => {
+                stream.advance();
+                Ok(Stmt::Input(self.arguments(stream)?))
+            }
+            // Try to interpret as assignment
+            // NOTE: no consume guarantees?
+            _ => match self.parse_precedence(stream, Precedence::Assignable, "") {
+                Ok(target) => {
+                    // TODO: update after spanned expr
+                    self.cur_ctx = ("for assignment", Some(Span::initial()));
+                    force_consume!(self, stream; TokenType::LArrow);
+                    let value = self.parse_expr(stream)?;
+                    Ok(Stmt::Assignment { target, value })
+                }
+                Err(_) => Err(self.make_error(stream, ParseErrorKind::ExpectedStatement)),
+            },
         }
     }
 
-    fn get_ident_handle(&mut self, ident: Rc<str>) -> usize {
-        if let Some(&handle) = self.identifier_map.get(&ident) {
-            return handle;
-        }
-        let new_handle = self.identifier_map.len();
-        let _ = self.identifier_map.insert(ident, new_handle);
-        new_handle
+    pub fn parse_program<S: TokenStream>(&mut self, stream: &mut S) -> ParseResult<Block> {
+        parse_block!(self, stream)
     }
 }
 
-pub fn parse_expression(tokens: impl IntoIterator<Item = Token>) -> Result<Expr, ParserError> {
-    let mut buf = TokenBuffer::from_iter(tokens);
-    let mut parser = Parser::new();
-    parser.parse_expression(&mut buf)
+pub trait TokenStream {
+    fn peek(&mut self) -> Option<Token>;
+
+    fn advance(&mut self) -> Option<Token>;
+
+    fn consume(&mut self, ttype: TokenType) -> Option<Token> {
+        if self.peek().map_or(false, |t| t.type_ == ttype) {
+            self.advance()
+        } else {
+            None
+        }
+    }
+
+    fn eof_index(&self) -> Option<ByteIndex> {
+        None
+    }
 }
 
-pub fn parse_statement(tokens: impl IntoIterator<Item = Token>) -> Result<Stmt, ParserError> {
-    let mut buf = TokenBuffer::from_iter(tokens);
-    let mut parser = Parser::new();
-    parser.parse_stmt(&mut buf)
+#[derive(Debug)]
+pub struct TokenExtractor<I>
+where
+    I: Iterator<Item = ScanResult>,
+{
+    stream: I,
+    pub previous: Option<Option<Token>>,
+    pub scan_errors: Vec<ScannerError>,
 }
 
-pub fn parse_block(tokens: impl IntoIterator<Item = Token>) -> Block {
-    let mut buf = TokenBuffer::from_iter(tokens);
-    let mut parser = Parser::new();
-    parser.parse_block(&mut buf)
+impl<I> TokenExtractor<I>
+where
+    I: Iterator<Item = ScanResult>,
+{
+    pub fn new(stream: I) -> Self {
+        Self {
+            stream,
+            previous: None,
+            scan_errors: Vec::new(),
+        }
+    }
+
+    fn next_inner(&mut self) -> Option<Token> {
+        loop {
+            match self.stream.next() {
+                Some(Err(e)) => {
+                    self.scan_errors.push(e);
+                }
+                Some(Ok(Token {
+                    type_: TokenType::Whitespace | TokenType::Comment,
+                    ..
+                })) => (),
+                Some(Ok(t)) => break Some(t),
+                None => break None,
+            }
+        }
+    }
+}
+
+impl<'s> TokenStream for TokenExtractor<Scanner<'s, 's>> {
+    fn peek(&mut self) -> Option<Token> {
+        // Manual version of get_or_insert_with due to borrow checking rules
+        if self.previous.is_none() {
+            self.previous = Some(self.next_inner());
+        }
+        unsafe { self.previous.as_ref().unwrap_unchecked() }
+            .as_ref()
+            .cloned()
+    }
+
+    fn advance(&mut self) -> Option<Token> {
+        self.previous
+            .take()
+            .unwrap_or_else(|| self.next_inner())
+            .as_ref()
+            .cloned()
+    }
+
+    fn eof_index(&self) -> Option<ByteIndex> {
+        let len = self.stream.source.len() as u32;
+        Some(ByteIndex(len))
+    }
 }
