@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::ast::stmt;
+use crate::tree_parser::stmt;
 
 use super::runtime::{ProgramState, RuntimeResult};
 
@@ -10,9 +10,9 @@ pub trait Exec: Debug {
 
 pub type BoxExec = Box<dyn Exec>;
 
-impl Exec for [BoxExec] {
+impl Exec for stmt::Block {
     fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
-        for stmt in self {
+        for stmt in self.0.iter() {
             stmt.exec(state)?;
         }
         Ok(())
@@ -64,27 +64,3 @@ impl Exec for stmt::Assignment {
         Ok(())
     }
 }
-
-// match self {
-// Stmt::If {
-//     condition,
-//     then_branch,
-//     else_branch,
-// } => {
-//     let cond = condition.eval(state)?;
-//     if cond.try_into()? {
-//         then_branch.exec(state)?;
-//     } else {
-//         else_branch.exec(state)?;
-//     }
-// }
-// // TODO: Figure out array indexing
-// Stmt::Assignment {
-//     target: Expr::Identifier { handle },
-//     value,
-// } => {
-//     // TODO: enforce declarations
-//     state.variables.insert(*handle, Some(value.eval(state)?));
-// }
-// _ => todo!("Stmt::exec"),
-// }

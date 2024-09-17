@@ -10,14 +10,13 @@ use std::io;
 
 use interpreter::Interpreter;
 
-mod ast;
 mod interpreter;
-mod parser;
 mod scanner;
 mod token;
+mod tree_parser;
 
 const SOURCE: &str = r#"
-a <-
+a <- 4
 OUTPUT a + 1
 a <- a + 1
 OUTPUT a + 10

@@ -24,6 +24,7 @@ where
     iter: Peekable<Chars<'a>>,
     start: u32,
     current: u32,
+    pub errors: Vec<ScannerError>,
 }
 
 impl<'a, 'src: 'a> Scanner<'src, 'a> {
@@ -33,6 +34,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
             iter: source.chars().peekable(),
             start: 0,
             current: 0,
+            errors: Vec::new(),
         }
     }
 
@@ -235,10 +237,16 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
 }
 
 impl<'s> Iterator for Scanner<'s, 's> {
-    type Item = ScanResult;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.scan_next()
+        loop {
+            match self.scan_next() {
+                Some(Ok(token)) => break Some(token),
+                None => break None,
+                Some(Err(e)) => self.errors.push(e),
+            }
+        }
     }
 }
 

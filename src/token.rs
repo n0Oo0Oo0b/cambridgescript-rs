@@ -2,7 +2,7 @@ use std::{fmt::Display, rc::Rc};
 
 use codespan::{ByteIndex, Span};
 
-use crate::ast::MaybeSpanned;
+use crate::tree_parser::MaybeSpanned;
 
 #[rustfmt::skip]
 #[derive(Clone, Debug, PartialEq)]

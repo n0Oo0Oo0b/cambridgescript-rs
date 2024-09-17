@@ -1,22 +1,16 @@
 use std::fmt::Debug;
 
 use super::runtime::{ProgramState, RuntimeError, RuntimeResult};
-use crate::ast::{expr, BinaryOp, MaybeSpanned, Pow, UnaryOp, Value};
+use crate::tree_parser::{expr, BinaryOp, MaybeSpanned, Pow, UnaryOp, Value};
 
-pub trait Eval: MaybeSpanned + Debug {
+pub trait Eval: Debug + MaybeSpanned {
     fn eval(&self, state: &ProgramState) -> RuntimeResult<Value>;
 }
 
 pub type BoxEval = Box<dyn Eval>;
 
-macro_rules! ordered_op {
-    ($lhs:ident, $rhs:ident, $method:ident) => {
-        Ok($lhs
-            .partial_cmp(&$rhs)
-            .ok_or(RuntimeError::IncompatibleTypes($lhs, $rhs))?
-            .$method()
-            .into())
-    };
+pub trait Assign: Debug {
+    fn assign(&self, state: &mut ProgramState, value: Value) -> RuntimeResult<()>;
 }
 
 impl UnaryOp {
@@ -26,6 +20,16 @@ impl UnaryOp {
             Self::Neg => -right,
         }
     }
+}
+
+macro_rules! ordered_op {
+    ($lhs:ident, $rhs:ident, $method:ident) => {
+        Ok($lhs
+            .partial_cmp(&$rhs)
+            .ok_or(RuntimeError::IncompatibleTypes($lhs, $rhs))?
+            .$method()
+            .into())
+    };
 }
 
 impl BinaryOp {
@@ -81,5 +85,11 @@ impl Eval for expr::Identifier {
 impl Eval for expr::Literal {
     fn eval(&self, _state: &ProgramState) -> RuntimeResult<Value> {
         Ok(self.value.clone())
+    }
+}
+
+impl Assign for expr::Identifier {
+    fn assign(&self, state: &mut ProgramState, value: Value) -> RuntimeResult<()> {
+        state.set_variable(self.handle, value)
     }
 }

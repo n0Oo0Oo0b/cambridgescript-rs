@@ -1,9 +1,9 @@
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 
 use crate::{
-    ast::MaybeSpanned,
-    parser::{ParseError, ParseErrorKind},
     scanner::ScannerError,
+    tree_parser::parser::{ParseError, ParseErrorKind},
+    tree_parser::MaybeSpanned,
 };
 
 use super::runtime::{InterpretError, RuntimeError};

@@ -3,10 +3,11 @@ use codespan_reporting::{files::SimpleFile, term};
 use std::io::{Cursor, Read, Write};
 use std::{collections::HashMap, fmt};
 
+use crate::tree_parser::parse_expr;
 use crate::{
-    ast::Value,
-    parser::{ParseError, ParseResult, Parser, TokenExtractor},
     scanner::{Scanner, ScannerError},
+    tree_parser::parser::{Parse, ParseError, ParseResult, ParseStream},
+    tree_parser::{stmt, Value},
 };
 
 use super::Exec;
@@ -59,7 +60,7 @@ impl TryFrom<Value> for bool {
 }
 
 #[derive(Default)]
-pub(crate) struct ProgramState {
+pub struct ProgramState {
     variables: HashMap<usize, Option<Value>>,
     pub(super) stdout: Vec<u8>,
 }
@@ -93,26 +94,24 @@ impl ProgramState {
 
 pub struct Interpreter {
     state: ProgramState,
-    parser: Parser,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
             state: ProgramState::default(),
-            parser: Parser::new(),
         }
     }
 
-    fn parse<'s, T, F>(&mut self, source: &'s str, parse_fn: F) -> InterpretResult<T>
+    fn parse<T, F>(&mut self, source: &str, parse_fn: F) -> InterpretResult<T>
     where
-        F: Fn(&mut Parser, &mut TokenExtractor<Scanner<'s, 's>>) -> ParseResult<T>,
+        F: Fn(&mut ParseStream) -> ParseResult<T>,
     {
-        let mut tokens = TokenExtractor::new(Scanner::new(source));
-        let maybe_parsed = parse_fn(&mut self.parser, &mut tokens);
-        if !tokens.scan_errors.is_empty() {
-            return Err(tokens
-                .scan_errors
+        let mut scanner = Box::new(Scanner::new(source));
+        let maybe_parsed = parse_fn(&mut ParseStream::from_scanner(&mut scanner));
+        if !scanner.errors.is_empty() {
+            return Err(scanner
+                .errors
                 .into_iter()
                 .map(InterpretError::from)
                 .collect());
@@ -136,7 +135,7 @@ impl Interpreter {
 
     pub fn exec_src(&mut self, source: &str) -> InterpretResult<()> {
         let block = self
-            .parse(source, Parser::parse_program)
+            .parse(source, stmt::Block::parse)
             .inspect_err(|e| self.show_diagnostic(source, e))?;
         block
             .exec(&mut self.state)
@@ -146,7 +145,7 @@ impl Interpreter {
 
     #[allow(unused)]
     pub fn eval_src(&mut self, source: &str) -> InterpretResult<Value> {
-        let expr = self.parse(source, Parser::parse_expr)?;
+        let expr = self.parse(source, parse_expr)?;
         expr.eval(&self.state).map_err(|e| vec![e.into()])
     }
 
