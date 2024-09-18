@@ -13,6 +13,7 @@ pub enum ParseErrorKind {
     UnexpectedToken(TokenType),
     ExpectedExpression,
     ExpectedStatement,
+    ExpectedType,
 }
 
 #[derive(Debug, Clone)]
@@ -29,45 +30,35 @@ pub(crate) trait Parse: Sized {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self>;
 }
 
-type PrefixRule = fn(&mut ParseStream) -> ParseResult<BoxEval>;
-type InfixRule = fn(&mut ParseStream, left: BoxEval) -> ParseResult<BoxEval>;
-
 // Helpers
-
-macro_rules! force_consume {
-    ($self:ident, $stream:ident; $ttype:expr) => {
-        $stream
-            .consume($ttype)
-            .ok_or_else(|| $self.make_error($stream, ParseErrorKind::UnexpectedToken($ttype)))?;
-    };
-}
 
 macro_rules! token_of {
     ($($t:tt)*) => {
         Token {
-            type_: TokenType::$($t)*,
+            r#type: TokenType::$($t)*,
             ..
         }
     };
 }
 pub(super) use token_of;
 
-macro_rules! parse_block {
-    ($self:ident, $stream:expr; $end:pat) => {{
-        let mut items = Vec::new();
-        while !matches!($stream.peek(), Some($end)) {
-            items.push($self.parse_stmt($stream)?);
+macro_rules! block_ending_with {
+    ($end:pat) => {
+        |stream: &mut ParseStream| {
+            let mut items = Vec::new();
+            loop {
+                match stream.peek() {
+                    Some($end) => break,
+                    None => break,
+                    _ => (),
+                }
+                items.push(stream.parse::<ParseableStmt>()?.into());
+            }
+            Ok(stmt::Block(items.into_boxed_slice()))
         }
-        Ok(items.into_boxed_slice())
-    }};
-    ($self:ident, $stream:expr) => {{
-        let mut items = Vec::new();
-        while $stream.peek().is_some() {
-            items.push($self.parse_stmt($stream)?);
-        }
-        Ok(items.into_boxed_slice())
-    }};
+    };
 }
+pub(super) use block_ending_with;
 
 pub(crate) struct ParseStream<'a> {
     stream: &'a mut dyn Iterator<Item = Token>,
@@ -105,7 +96,7 @@ impl<'a> ParseStream<'a> {
             // Skip whitespace and comment
             match self.stream.next() {
                 Some(Token {
-                    type_: TokenType::Whitespace | TokenType::Comment,
+                    r#type: TokenType::Whitespace | TokenType::Comment,
                     ..
                 }) => continue,
                 other => break other,
@@ -132,7 +123,7 @@ impl<'a> ParseStream<'a> {
     }
 
     pub fn consume(&mut self, kind: TokenType) -> Option<Token> {
-        if self.peek().is_some_and(|t| t.type_ == kind) {
+        if self.peek().is_some_and(|t| t.r#type == kind) {
             self.advance()
         } else {
             None

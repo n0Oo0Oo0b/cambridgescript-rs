@@ -1,8 +1,9 @@
 use std::fmt::Debug;
 
-use crate::tree_parser::stmt;
+use crate::tree_parser::stmt::{self, VariableDecl};
 
-use super::runtime::{ProgramState, RuntimeResult};
+use super::runtime::RuntimeResult;
+use super::ProgramState;
 
 pub trait Exec: Debug {
     fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()>;
@@ -15,6 +16,13 @@ impl Exec for stmt::Block {
         for stmt in self.0.iter() {
             stmt.exec(state)?;
         }
+        Ok(())
+    }
+}
+
+impl Exec for VariableDecl {
+    fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
+        self.target.declare(state, self.r#type)?;
         Ok(())
     }
 }

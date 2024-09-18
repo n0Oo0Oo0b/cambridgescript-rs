@@ -17,20 +17,12 @@ mod token;
 mod tree_parser;
 
 const SOURCE: &str = r#"
+DECLARE a: INTEGER
+
 a <- 1
 
-WHILE a < 10 DO
-    a <- a + 1
-ENDWHILE
-
-REPEAT
-    a <- a - 1
-UNTIL a < 5
-
-IF a = 10 THEN
-    OUTPUT "a is 10"
-ELSE
-    OUTPUT a
+IF a = 1 THEN
+    OUTPUT "hi"
 ENDIF
 "#;
 

@@ -38,37 +38,30 @@ impl From<ParseError> for Diagnostic<()> {
             location,
             kind,
         } = value;
-        let (ctx_msg, ctx_span) = (context.0, context.1.unwrap());
-
-        let (message, expected, found_name) = match kind {
-            ParseErrorKind::UnexpectedToken(expected) => (
-                "Unexpected token or EOF",
-                expected.to_string(),
-                location.to_string(),
-            ),
-            ParseErrorKind::ExpectedExpression => (
-                "Expected expression",
-                "expression".to_string(),
-                location.to_string(),
-            ),
-            ParseErrorKind::ExpectedStatement => (
-                "Expected statement",
-                "statement".to_string(),
-                location.to_string(),
-            ),
+        let (message, expected) = match kind {
+            ParseErrorKind::UnexpectedToken(expected) => {
+                ("Unexpected token or EOF", expected.to_string())
+            }
+            ParseErrorKind::ExpectedExpression => ("Expected expression", "expression".to_string()),
+            ParseErrorKind::ExpectedStatement => ("Expected statement", "statement".to_string()),
+            ParseErrorKind::ExpectedType => ("Expected statement", "statement".to_string()),
         };
 
-        Diagnostic::error().with_message(message).with_labels(vec![
-            Label::primary((), location.get_span().unwrap())
-                .with_message(format!("Expected {expected}, found {found_name}")),
-            Label::secondary((), ctx_span).with_message(format!("Required {}", ctx_msg)),
-        ])
+        let mut labels = vec![Label::primary((), location.get_span().unwrap())
+            .with_message(format!("Expected {expected}, found {location}"))];
+        if let Some(span) = context.1 {
+            labels.push(Label::secondary((), span).with_message(format!("Required {}", context.0)));
+        }
+        Diagnostic::error()
+            .with_message(message)
+            .with_labels(labels)
     }
 }
 
 impl From<RuntimeError> for Diagnostic<()> {
     fn from(value: RuntimeError) -> Self {
         match value {
+            RuntimeError::InvalidAssignmentType(_, _) => todo!("Invalid assignment type"),
             RuntimeError::UndeclaredVariable(_) => todo!("Undeclared ident"),
             RuntimeError::UndefinedVariable(_) => todo!("Undefined ident"),
             RuntimeError::IncompatibleTypes(_, _) => todo!("Incompatible type"),

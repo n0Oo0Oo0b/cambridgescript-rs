@@ -120,7 +120,7 @@ impl Parse for expr::Literal {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         let token = stream.advance().expect("Literal token");
         Ok(Self {
-            value: token.type_.try_into().expect("Literal token"),
+            value: token.r#type.try_into().expect("Literal token"),
             span: token.span,
         })
     }
@@ -130,7 +130,7 @@ impl Parse for expr::Identifier {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         let (ident, span) = match stream.advance() {
             Some(Token {
-                type_: TokenType::Identifier(i),
+                r#type: TokenType::Identifier(i),
                 span,
             }) => (i, span),
             _ => panic!("ident() called without identifier token"),
@@ -180,7 +180,7 @@ fn parse_precedence(
             | token_of!(BooleanLiteral(_)),
         ) => Box::new(expr::Literal::parse(stream)?),
         Some(token_of!(Identifier(_))) => Box::new(expr::Identifier::parse(stream)?),
-        Some(Token { type_, span }) if let Some((op, prec)) = type_.as_unary() => {
+        Some(Token { r#type, span }) if let Some((op, prec)) = r#type.as_unary() => {
             if prec < precedence {
                 todo!("unary prec handling");
             }
@@ -200,7 +200,7 @@ fn parse_precedence(
     loop {
         // Infix rule
         res = match stream.peek() {
-            Some(Token { type_, span }) if let Some((op, prec)) = type_.as_binary() => {
+            Some(Token { r#type, span }) if let Some((op, prec)) = r#type.as_binary() => {
                 if prec < precedence {
                     break;
                 }
@@ -220,7 +220,7 @@ fn parse_precedence(
 pub(crate) fn parse_assignable(stream: &mut ParseStream) -> ParseResult<Box<dyn Assign>> {
     match stream.peek() {
         Some(token_of!(Identifier(_))) => Ok(Box::new(expr::Identifier::parse(stream)?)),
-        _ => stream.error(ParseErrorKind::ExpectedExpression, todo!()),
+        _ => stream.error(ParseErrorKind::ExpectedExpression, ("", None)),
     }
 }
 

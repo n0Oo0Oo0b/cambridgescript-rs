@@ -1,7 +1,8 @@
 use std::fmt::Debug;
 
-use super::runtime::{ProgramState, RuntimeError, RuntimeResult};
-use crate::tree_parser::{expr, BinaryOp, MaybeSpanned, Pow, UnaryOp, Value};
+use super::runtime::{RuntimeError, RuntimeResult};
+use super::ProgramState;
+use crate::tree_parser::{expr, BinaryOp, MaybeSpanned, Pow, PrimitiveType, UnaryOp, Value};
 
 pub trait Eval: Debug + MaybeSpanned {
     fn eval(&self, state: &ProgramState) -> RuntimeResult<Value>;
@@ -10,6 +11,8 @@ pub trait Eval: Debug + MaybeSpanned {
 pub type BoxEval = Box<dyn Eval>;
 
 pub trait Assign: Debug + MaybeSpanned {
+    fn declare(&self, state: &mut ProgramState, r#type: PrimitiveType) -> RuntimeResult<()>;
+
     fn assign(&self, state: &mut ProgramState, value: Value) -> RuntimeResult<()>;
 }
 
@@ -22,7 +25,7 @@ impl UnaryOp {
     }
 }
 
-macro_rules! ordered_op {
+macro_rules! cmp_op {
     ($lhs:ident, $rhs:ident, $method:ident) => {
         Ok($lhs
             .partial_cmp(&$rhs)
@@ -51,12 +54,12 @@ impl BinaryOp {
             Self::Mul => left * right,
             Self::Div => left / right,
             Self::Pow => left.pow(right),
-            Self::Eq => ordered_op!(left, right, is_eq),
-            Self::Ne => ordered_op!(left, right, is_ne),
-            Self::Le => ordered_op!(left, right, is_le),
-            Self::Ge => ordered_op!(left, right, is_ge),
-            Self::Lt => ordered_op!(left, right, is_lt),
-            Self::Gt => ordered_op!(left, right, is_gt),
+            Self::Eq => cmp_op!(left, right, is_eq),
+            Self::Ne => cmp_op!(left, right, is_ne),
+            Self::Le => cmp_op!(left, right, is_le),
+            Self::Ge => cmp_op!(left, right, is_ge),
+            Self::Lt => cmp_op!(left, right, is_lt),
+            Self::Gt => cmp_op!(left, right, is_gt),
         }
     }
 }
@@ -89,6 +92,10 @@ impl Eval for expr::Literal {
 }
 
 impl Assign for expr::Identifier {
+    fn declare(&self, state: &mut ProgramState, r#type: PrimitiveType) -> RuntimeResult<()> {
+        state.declare_variable(self.handle, r#type)
+    }
+
     fn assign(&self, state: &mut ProgramState, value: Value) -> RuntimeResult<()> {
         state.set_variable(self.handle, value)
     }

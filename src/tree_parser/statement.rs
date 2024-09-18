@@ -7,8 +7,10 @@ use crate::{
 };
 
 use super::{
-    expr, parse_arguments, parse_assignable, parse_expr,
-    parser::{token_of, Parse, ParseErrorKind, ParseResult, ParseStream},
+    expr, join_span, parse_arguments, parse_assignable, parse_expr,
+    parser::{
+        block_ending_with, token_of, Parse, ParseError, ParseErrorKind, ParseResult, ParseStream,
+    },
     MaybeSpanned, Value,
 };
 
@@ -31,10 +33,12 @@ type Type = ();
 #[derive(Debug)]
 pub struct Parameter {
     pub name: expr::Identifier,
-    pub type_: Type,
+    pub r#type: Type,
 }
 
 pub mod stmt {
+    use crate::tree_parser::PrimitiveType;
+
     use super::*;
 
     #[derive(Debug, Default)]
@@ -104,8 +108,8 @@ pub mod stmt {
 
     #[derive(Debug)]
     pub struct VariableDecl {
-        pub name: BoxEval,
-        pub type_: Type,
+        pub target: Box<dyn Assign>,
+        pub r#type: PrimitiveType,
     }
 
     #[derive(Debug)]
@@ -143,28 +147,34 @@ impl Parse for stmt::Block {
     }
 }
 
-macro_rules! block_ending_with {
-    ($stream:expr; $end:pat) => {{
-        let mut items = Vec::new();
-        while !matches!($stream.peek(), Some($end)) {
-            items.push(ParseableStmt::parse($stream)?.into());
-        }
-        Ok(stmt::Block(items.into_boxed_slice()))
-    }};
+impl Parse for stmt::VariableDecl {
+    fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
+        let s = stream
+            .consume(TokenType::Declare)
+            .expect("Declare statement")
+            .span;
+        let target = parse_assignable(stream)?;
+        stream.force_consume(TokenType::Colon, ("for variable declaration", s))?;
+        let r#type = stream.parse()?;
+        Ok(Self { target, r#type })
+    }
 }
 
 impl Parse for stmt::IfStmt {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
-        stream.consume(TokenType::If).expect("If statement");
+        let s = stream.consume(TokenType::If).expect("If statement").span;
         let condition = parse_expr(stream)?;
-        stream.force_consume(TokenType::Then, ("", None))?;
-        let then_branch = block_ending_with!(stream; token_of!(Else) | token_of!(EndIf))?;
+        stream.force_consume(
+            TokenType::Then,
+            ("after IF condition", join_span(s, condition.get_span())),
+        )?;
+        let then_branch = block_ending_with![token_of!(Else) | token_of!(EndIf)](stream)?;
         let else_branch = if stream.consume(TokenType::Else).is_some() {
-            block_ending_with!(stream; token_of!(EndIf))?
+            block_ending_with![token_of!(EndIf)](stream)?
         } else {
             stmt::Block::default()
         };
-        stream.force_consume(TokenType::EndIf, ("", None))?;
+        stream.force_consume(TokenType::EndIf, ("at the end of IF statement", s))?;
         Ok(stmt::IfStmt {
             condition,
             then_branch,
@@ -177,9 +187,9 @@ impl Parse for stmt::WhileLoop {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         stream.consume(TokenType::While).expect("While loop");
         let condition = parse_expr(stream)?;
-        stream.force_consume(TokenType::Do, ("", None))?;
-        let body = block_ending_with!(stream; token_of!(EndWhile))?;
-        stream.force_consume(TokenType::EndWhile, ("", None))?;
+        stream.force_consume(TokenType::Do, ("after WHILE condition", None))?;
+        let body = block_ending_with![token_of!(EndWhile)](stream)?;
+        stream.force_consume(TokenType::EndWhile, ("after WHILE loop", None))?;
         Ok(Self { condition, body })
     }
 }
@@ -187,8 +197,8 @@ impl Parse for stmt::WhileLoop {
 impl Parse for stmt::UntilLoop {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         stream.consume(TokenType::Repeat).expect("Until loop");
-        let body = block_ending_with!(stream; token_of!(Until))?;
-        stream.force_consume(TokenType::Until, ("", None))?;
+        let body = block_ending_with![token_of!(Until)](stream)?;
+        stream.force_consume(TokenType::Until, ("at the end of REPEAT", None))?;
         let condition = parse_expr(stream)?;
         Ok(Self { condition, body })
     }
@@ -205,13 +215,14 @@ impl Parse for stmt::Output {
 impl Parse for stmt::AssignStmt {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         let target = parse_assignable(stream)?;
-        stream.force_consume(TokenType::LArrow, ("", None))?;
+        stream.force_consume(TokenType::LArrow, ("for assignment", None))?;
         let value = parse_expr(stream)?;
         Ok(Self { target, value })
     }
 }
 
 pub enum ParseableStmt {
+    VarDecl(stmt::VariableDecl),
     If(stmt::IfStmt),
     While(stmt::WhileLoop),
     Until(stmt::UntilLoop),
@@ -222,12 +233,13 @@ pub enum ParseableStmt {
 impl Parse for ParseableStmt {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         match stream.peek() {
+            Some(token_of!(Declare)) => Ok(Self::VarDecl(stream.parse()?)),
             Some(token_of!(If)) => Ok(Self::If(stream.parse()?)),
             Some(token_of!(Output)) => Ok(Self::Output(stream.parse()?)),
             Some(token_of!(While)) => Ok(Self::While(stream.parse()?)),
             Some(token_of!(Repeat)) => Ok(Self::Until(stream.parse()?)),
             Some(t) => Ok(Self::Assign(stream.parse()?)),
-            None => stream.error(ParseErrorKind::ExpectedStatement, todo!()),
+            None => stream.error(ParseErrorKind::ExpectedStatement, ("", None)),
         }
     }
 }
@@ -235,11 +247,23 @@ impl Parse for ParseableStmt {
 impl From<ParseableStmt> for Box<dyn Exec> {
     fn from(value: ParseableStmt) -> Self {
         match value {
+            ParseableStmt::VarDecl(x) => Box::new(x) as Self,
             ParseableStmt::If(x) => Box::new(x) as Self,
             ParseableStmt::While(x) => Box::new(x) as Self,
             ParseableStmt::Until(x) => Box::new(x) as Self,
             ParseableStmt::Output(x) => Box::new(x) as Self,
             ParseableStmt::Assign(x) => Box::new(x) as Self,
         }
+    }
+}
+
+#[inline]
+pub fn maybe_stmt(stream: &mut ParseStream) -> Option<ParseResult<Box<dyn Exec>>> {
+    match stream.parse::<ParseableStmt>() {
+        Err(ParseError {
+            kind: ParseErrorKind::ExpectedStatement,
+            ..
+        }) => None,
+        other => Some(other.map(Into::into)),
     }
 }

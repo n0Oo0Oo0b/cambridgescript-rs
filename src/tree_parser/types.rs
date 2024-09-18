@@ -1,14 +1,34 @@
 use std::{fmt, rc::Rc};
 
-use crate::{interpreter::Eval, token::TokenType};
+use crate::interpreter::Eval;
+use crate::token::{Token, TokenType};
 
-#[derive(Debug)]
+use super::parser::{token_of, Parse, ParseErrorKind};
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum PrimitiveType {
     Char,
     String,
     Integer,
     Real,
     Boolean,
+}
+
+impl Parse for PrimitiveType {
+    fn parse(stream: &mut super::parser::ParseStream) -> super::parser::ParseResult<Self> {
+        let result = match stream.peek() {
+            Some(token_of!(Char)) => Self::Char,
+            Some(token_of!(String)) => Self::String,
+            Some(token_of!(Integer)) => Self::Integer,
+            Some(token_of!(Real)) => Self::Real,
+            Some(token_of!(Boolean)) => Self::Boolean,
+            tok => {
+                return stream.error(ParseErrorKind::ExpectedType, ("", tok.and_then(|t| t.span)))
+            }
+        };
+        stream.advance();
+        Ok(result)
+    }
 }
 
 #[derive(Debug)]
@@ -24,6 +44,18 @@ pub enum Value {
     Integer(i64),
     Real(f64),
     Boolean(bool),
+}
+
+impl Value {
+    pub fn get_type(&self) -> PrimitiveType {
+        match self {
+            Self::Char(_) => PrimitiveType::Char,
+            Self::String(_) => PrimitiveType::String,
+            Self::Integer(_) => PrimitiveType::Integer,
+            Self::Real(_) => PrimitiveType::Real,
+            Self::Boolean(_) => PrimitiveType::Boolean,
+        }
+    }
 }
 
 impl TryFrom<TokenType> for Value {

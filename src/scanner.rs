@@ -63,8 +63,8 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     }
 
     #[inline]
-    fn make_token(&self, type_: TokenType) -> Token {
-        Token::with_span(type_, self.current_span())
+    fn make_token(&self, r#type: TokenType) -> Token {
+        Token::with_span(r#type, self.current_span())
     }
 
     fn advance_if_match(&mut self, target: char) -> bool {
@@ -259,14 +259,14 @@ mod tests {
         scanner.scan_next().unwrap()
     }
 
-    fn assert_token_type(source: &str, type_: TokenType) {
+    fn assert_token_type(source: &str, r#type: TokenType) {
         let token = match scan_single_token(source) {
-            Ok(Token { type_: t, .. }) => t,
+            Ok(Token { r#type: t, .. }) => t,
             Err(e) => panic!("Scan failed on {source:?}\nError: {e:?}"),
         };
         assert!(
-            token == type_,
-            "Expected TokenType {type_:?} from {source:?}, found {token:?}"
+            token == r#type,
+            "Expected TokenType {type:?} from {source:?}, found {token:?}"
         );
     }
 
