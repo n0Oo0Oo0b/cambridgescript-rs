@@ -7,7 +7,7 @@
     if_let_guard
 )]
 
-use std::io;
+use std::{env, fs, io};
 
 use interpreter::Interpreter;
 
@@ -18,5 +18,13 @@ mod tree_parser;
 
 fn main() -> io::Result<()> {
     let mut i = Interpreter::new();
-    i.repl()
+    let args: Vec<_> = env::args().collect();
+    match args.get(1) {
+        Some(fp) => {
+            let script = fs::read_to_string(fp)?;
+            i.full_exec(&script);
+            Ok(())
+        }
+        None => i.repl(),
+    }
 }

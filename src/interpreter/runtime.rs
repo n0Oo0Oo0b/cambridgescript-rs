@@ -1,6 +1,6 @@
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use codespan_reporting::{files::SimpleFile, term};
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Write};
 use std::mem;
 
 use crate::tree_parser::parse_expr;
@@ -85,11 +85,7 @@ impl Interpreter {
             //     Err(e) => self.show_diagnostic(&input, &e),
             //     Ok(v) => writeln!(stdout, "{v}")?,
             // }
-            let result = self.exec_src(&input);
-            io::copy(&mut self.take_stdout().as_ref(), &mut stdout)?;
-            if let Err(e) = result {
-                self.show_diagnostic(&input, &e);
-            }
+            self.full_exec(&input);
         }
     }
 
@@ -124,6 +120,15 @@ impl Interpreter {
         for error in errors {
             term::emit(&mut wlock, &config, &files, &error.clone().into())
                 .expect("Failed to display error");
+        }
+    }
+
+    pub fn full_exec(&mut self, source: &str) {
+        let result = self.exec_src(source);
+        io::copy(&mut self.take_stdout().as_ref(), &mut io::stdout())
+            .expect("Failed to write to stdout");
+        if let Err(e) = result {
+            self.show_diagnostic(source, &e);
         }
     }
 
