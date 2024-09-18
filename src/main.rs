@@ -7,7 +7,7 @@
     if_let_guard
 )]
 
-use std::io;
+use std::{env, fs, io};
 
 use interpreter::Interpreter;
 
@@ -16,18 +16,15 @@ mod scanner;
 mod token;
 mod tree_parser;
 
-const SOURCE: &str = r#"
-DECLARE a: INTEGER
-
-a <- 1
-
-IF a = 1 THEN
-    OUTPUT "hi"
-ENDIF
-"#;
-
-fn main() {
+fn main() -> io::Result<()> {
     let mut i = Interpreter::new();
-    let _ = i.exec_src(SOURCE);
-    io::copy(&mut i.get_stdout(), &mut io::stdout()).expect("Failed to output to stdout");
+    let args: Vec<_> = env::args().collect();
+    match args.get(1) {
+        Some(fp) => {
+            let script = fs::read_to_string(fp)?;
+            i.full_exec(&script);
+            Ok(())
+        }
+        None => i.repl(),
+    }
 }
