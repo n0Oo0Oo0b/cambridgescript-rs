@@ -1,6 +1,7 @@
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use codespan_reporting::{files::SimpleFile, term};
-use std::io::{Cursor, Read};
+use std::io::{self, Cursor, Read, Write};
+use std::mem;
 
 use crate::tree_parser::parse_expr;
 use crate::{
@@ -70,6 +71,28 @@ impl Interpreter {
         }
     }
 
+    pub fn repl(&mut self) -> io::Result<()> {
+        let mut stdout = io::stdout();
+        let stdin = io::stdin();
+
+        loop {
+            write!(stdout, "> ")?;
+            stdout.flush()?;
+
+            let mut input = String::new();
+            stdin.read_line(&mut input)?;
+            // match self.eval_src(&input) {
+            //     Err(e) => self.show_diagnostic(&input, &e),
+            //     Ok(v) => writeln!(stdout, "{v}")?,
+            // }
+            let result = self.exec_src(&input);
+            io::copy(&mut self.take_stdout().as_ref(), &mut stdout)?;
+            if let Err(e) = result {
+                self.show_diagnostic(&input, &e);
+            }
+        }
+    }
+
     fn parse<T, F>(&mut self, source: &str, parse_fn: F) -> InterpretResult<T>
     where
         F: Fn(&mut ParseStream) -> ParseResult<T>,
@@ -105,13 +128,8 @@ impl Interpreter {
     }
 
     pub fn exec_src(&mut self, source: &str) -> InterpretResult<()> {
-        let block = self
-            .parse(source, stmt::Block::parse)
-            .inspect_err(|e| self.show_diagnostic(source, e))?;
-        block
-            .exec(&mut self.state)
-            .map_err(|e| vec![e.into()])
-            .inspect_err(|e| self.show_diagnostic(source, e))
+        let block = self.parse(source, stmt::Block::parse)?;
+        block.exec(&mut self.state).map_err(|e| vec![e.into()])
     }
 
     #[allow(unused)]
@@ -120,7 +138,9 @@ impl Interpreter {
         expr.eval(&self.state).map_err(|e| vec![e.into()])
     }
 
-    pub fn get_stdout(&self) -> impl Read + use<'_> {
-        Cursor::new(&self.state.stdout)
+    pub fn take_stdout(&mut self) -> Box<[u8]> {
+        let mut value = Vec::new();
+        mem::swap(&mut self.state.stdout, &mut value);
+        value.into_boxed_slice()
     }
 }
