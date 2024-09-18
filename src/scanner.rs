@@ -24,6 +24,7 @@ where
     iter: Peekable<Chars<'a>>,
     start: u32,
     current: u32,
+    pub errors: Vec<ScannerError>,
 }
 
 impl<'a, 'src: 'a> Scanner<'src, 'a> {
@@ -33,6 +34,7 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
             iter: source.chars().peekable(),
             start: 0,
             current: 0,
+            errors: Vec::new(),
         }
     }
 
@@ -61,8 +63,8 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
     }
 
     #[inline]
-    fn make_token(&self, type_: TokenType) -> Token {
-        Token::with_span(type_, self.current_span())
+    fn make_token(&self, r#type: TokenType) -> Token {
+        Token::with_span(r#type, self.current_span())
     }
 
     fn advance_if_match(&mut self, target: char) -> bool {
@@ -235,10 +237,16 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
 }
 
 impl<'s> Iterator for Scanner<'s, 's> {
-    type Item = ScanResult;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.scan_next()
+        loop {
+            match self.scan_next() {
+                Some(Ok(token)) => break Some(token),
+                None => break None,
+                Some(Err(e)) => self.errors.push(e),
+            }
+        }
     }
 }
 
@@ -251,14 +259,14 @@ mod tests {
         scanner.scan_next().unwrap()
     }
 
-    fn assert_token_type(source: &str, type_: TokenType) {
+    fn assert_token_type(source: &str, r#type: TokenType) {
         let token = match scan_single_token(source) {
-            Ok(Token { type_: t, .. }) => t,
+            Ok(Token { r#type: t, .. }) => t,
             Err(e) => panic!("Scan failed on {source:?}\nError: {e:?}"),
         };
         assert!(
-            token == type_,
-            "Expected TokenType {type_:?} from {source:?}, found {token:?}"
+            token == r#type,
+            "Expected TokenType {type:?} from {source:?}, found {token:?}"
         );
     }
 

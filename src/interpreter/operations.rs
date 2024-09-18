@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::ast::{Pow, Value};
+use crate::tree_parser::{Pow, Value};
 
 use super::runtime::{RuntimeError, RuntimeResult};
 

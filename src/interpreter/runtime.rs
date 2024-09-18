@@ -1,27 +1,21 @@
-use codespan_reporting::{
-    files::SimpleFile,
-    term::{
-        self,
-        termcolor::{ColorChoice, StandardStream},
-    },
-};
-use std::{
-    collections::HashMap,
-    io::{Cursor, Read},
-};
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use codespan_reporting::{files::SimpleFile, term};
+use std::io::{Cursor, Read};
 
+use crate::tree_parser::parse_expr;
 use crate::{
-    ast::Value,
-    parser::{ParseError, ParseResult, Parser, TokenExtractor},
     scanner::{Scanner, ScannerError},
+    tree_parser::parser::{Parse, ParseError, ParseResult, ParseStream},
+    tree_parser::{stmt, Value},
 };
 
-use super::{eval::Eval, exec::Exec};
+use super::{Exec, ProgramState};
 
 #[derive(Debug, Clone)]
 pub enum RuntimeError {
     UndeclaredVariable(usize),
     UndefinedVariable(usize),
+    InvalidAssignmentType(usize, Value),
     IncompatibleTypes(Value, Value),
     InvalidBool(Value),
 }
@@ -65,34 +59,26 @@ impl TryFrom<Value> for bool {
     }
 }
 
-#[derive(Default)]
-pub(super) struct ProgramState {
-    pub variables: HashMap<usize, Option<Value>>,
-    pub(super) stdout: Vec<u8>,
-}
-
 pub struct Interpreter {
     state: ProgramState,
-    parser: Parser,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
             state: ProgramState::default(),
-            parser: Parser::new(),
         }
     }
 
-    fn parse<'s, T, F>(&mut self, source: &'s str, parse_fn: F) -> InterpretResult<T>
+    fn parse<T, F>(&mut self, source: &str, parse_fn: F) -> InterpretResult<T>
     where
-        F: Fn(&mut Parser, &mut TokenExtractor<Scanner<'s, 's>>) -> ParseResult<T>,
+        F: Fn(&mut ParseStream) -> ParseResult<T>,
     {
-        let mut tokens = TokenExtractor::new(Scanner::new(source));
-        let maybe_parsed = parse_fn(&mut self.parser, &mut tokens);
-        if !tokens.scan_errors.is_empty() {
-            return Err(tokens
-                .scan_errors
+        let mut scanner = Box::new(Scanner::new(source));
+        let maybe_parsed = parse_fn(&mut ParseStream::from_scanner(&mut scanner));
+        if !scanner.errors.is_empty() {
+            return Err(scanner
+                .errors
                 .into_iter()
                 .map(InterpretError::from)
                 .collect());
@@ -106,7 +92,11 @@ impl Interpreter {
     pub fn show_diagnostic(&self, source: &str, errors: &Vec<InterpretError>) {
         let stderr = StandardStream::stderr(ColorChoice::Always);
         let mut wlock = stderr.lock();
-        let config = term::Config::default();
+        let config = term::Config {
+            start_context_lines: 3,
+            end_context_lines: 3,
+            ..Default::default()
+        };
         let files = SimpleFile::new("program", source);
         for error in errors {
             term::emit(&mut wlock, &config, &files, &error.clone().into())
@@ -116,7 +106,7 @@ impl Interpreter {
 
     pub fn exec_src(&mut self, source: &str) -> InterpretResult<()> {
         let block = self
-            .parse(source, Parser::parse_program)
+            .parse(source, stmt::Block::parse)
             .inspect_err(|e| self.show_diagnostic(source, e))?;
         block
             .exec(&mut self.state)
@@ -126,7 +116,7 @@ impl Interpreter {
 
     #[allow(unused)]
     pub fn eval_src(&mut self, source: &str) -> InterpretResult<Value> {
-        let expr = self.parse(source, Parser::parse_expr)?;
+        let expr = self.parse(source, parse_expr)?;
         expr.eval(&self.state).map_err(|e| vec![e.into()])
     }
 

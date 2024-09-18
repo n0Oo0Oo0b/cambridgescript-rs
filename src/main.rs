@@ -3,24 +3,27 @@
     stmt_expr_attributes,
     try_trait_v2,
     read_buf,
-    map_try_insert
+    map_try_insert,
+    if_let_guard
 )]
 
 use std::io;
 
 use interpreter::Interpreter;
 
-mod ast;
 mod interpreter;
-mod parser;
 mod scanner;
 mod token;
+mod tree_parser;
 
 const SOURCE: &str = r#"
-a <-
-OUTPUT a + 1
-a <- a + 1
-OUTPUT a + 10
+DECLARE a: INTEGER
+
+a <- 1
+
+IF a = 1 THEN
+    OUTPUT "hi"
+ENDIF
 "#;
 
 fn main() {
