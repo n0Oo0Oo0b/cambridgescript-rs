@@ -1,12 +1,12 @@
 use crate::{
-    interpreter::{BoxEval, Eval},
+    interpreter::{Assign, BoxEval, Eval},
     token::{Token, TokenType},
 };
 use codespan::{ByteIndex, Span};
 
 use super::{
     enum_derive, join_span,
-    parser::{token_of, Parse, ParseResult, ParseStream},
+    parser::{token_of, Parse, ParseErrorKind, ParseResult, ParseStream},
     stmt::ProcedureDecl,
     MaybeSpanned, Value,
 };
@@ -38,6 +38,40 @@ pub trait Pow<Rhs = Self> {
 pub enum UnaryOp {
     Not,
     Neg,
+}
+
+impl TokenType {
+    #[inline]
+    fn as_unary(&self) -> Option<(UnaryOp, Precedence)> {
+        Some(match self {
+            Self::Minus => (UnaryOp::Neg, Precedence::Unary),
+            Self::Not => (UnaryOp::Not, Precedence::LogicNot),
+            _ => return None,
+        })
+    }
+
+    #[inline]
+    fn as_binary(&self) -> Option<(BinaryOp, Precedence)> {
+        Some(match self {
+            // Logic
+            Self::Or => (BinaryOp::Or, Precedence::LogicOr),
+            Self::And => (BinaryOp::And, Precedence::LogicAnd),
+            // Equality + comparison
+            Self::Equal => (BinaryOp::Eq, Precedence::Equality),
+            Self::NotEqual => (BinaryOp::Ne, Precedence::Equality),
+            Self::Less => (BinaryOp::Lt, Precedence::Comparison),
+            Self::Greater => (BinaryOp::Gt, Precedence::Comparison),
+            Self::LessEqual => (BinaryOp::Le, Precedence::Comparison),
+            Self::GreaterEqual => (BinaryOp::Ge, Precedence::Comparison),
+            // Arithmetic
+            Self::Plus => (BinaryOp::Add, Precedence::Term),
+            Self::Minus => (BinaryOp::Sub, Precedence::Term),
+            Self::Star => (BinaryOp::Mul, Precedence::Factor),
+            Self::Slash => (BinaryOp::Div, Precedence::Factor),
+            Self::Caret => (BinaryOp::Pow, Precedence::Exponent),
+            _ => return None,
+        })
+    }
 }
 
 pub mod expr {
@@ -125,23 +159,73 @@ enum Precedence {
 impl Precedence {
     fn next(self) -> Self {
         if self == Self::Primary {
-            panic!("Precedence::Primary is the highest precedence")
+            panic!("Attempt to call next() on Primary")
         }
         // Safety: x+1 is always valid because self cannot be Primary
         unsafe { std::mem::transmute::<u8, Self>(self as u8 + 1) }
     }
 }
 
-fn parse_precedence(stream: &mut ParseStream) {
-    // Unary rule
+fn parse_precedence(
+    stream: &mut ParseStream,
+    precedence: Precedence,
+) -> ParseResult<Box<dyn Eval>> {
+    // Prefix rule
+    let mut res: Box<dyn Eval> = match stream.peek() {
+        Some(
+            token_of!(IntegerLiteral(_))
+            | token_of!(RealLiteral(_))
+            | token_of!(CharLiteral(_))
+            | token_of!(StringLiteral(_))
+            | token_of!(BooleanLiteral(_)),
+        ) => Box::new(expr::Literal::parse(stream)?),
+        Some(token_of!(Identifier(_))) => Box::new(expr::Identifier::parse(stream)?),
+        Some(Token { type_, span }) if let Some((op, prec)) = type_.as_unary() => {
+            if prec < precedence {
+                todo!("unary prec handling");
+            }
+            stream.advance();
+            Box::new(expr::UnaryExpr {
+                op,
+                op_span: span,
+                right: parse_precedence(stream, prec.next())?,
+            })
+        }
+        Some(token_of!(LParen)) => todo!("parse_precedence/grouping"),
+        t => {
+            todo!("parse_precedence/_")
+        }
+    };
+
+    loop {
+        // Infix rule
+        res = match stream.peek() {
+            Some(Token { type_, span }) if let Some((op, prec)) = type_.as_binary() => {
+                if prec < precedence {
+                    break;
+                }
+                stream.advance();
+                Box::new(expr::BinaryExpr {
+                    left: res,
+                    op,
+                    right: parse_precedence(stream, prec.next())?,
+                })
+            }
+            _ => break,
+        }
+    }
+    Ok(res)
+}
+
+pub(crate) fn parse_assignable(stream: &mut ParseStream) -> ParseResult<Box<dyn Assign>> {
     match stream.peek() {
-        Some(token_of!(Minus)) => todo!(),
-        _ => todo!(),
+        Some(token_of!(Identifier(_))) => Ok(Box::new(expr::Identifier::parse(stream)?)),
+        _ => stream.error(ParseErrorKind::ExpectedExpression, todo!()),
     }
 }
 
 pub fn parse_expr(stream: &mut ParseStream) -> ParseResult<Box<dyn Eval>> {
-    todo!("parse_expr")
+    parse_precedence(stream, Precedence::None)
 }
 
 pub(super) fn parse_arguments(stream: &mut ParseStream) -> ParseResult<Box<[BoxEval]>> {

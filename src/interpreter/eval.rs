@@ -9,7 +9,7 @@ pub trait Eval: Debug + MaybeSpanned {
 
 pub type BoxEval = Box<dyn Eval>;
 
-pub trait Assign: Debug {
+pub trait Assign: Debug + MaybeSpanned {
     fn assign(&self, state: &mut ProgramState, value: Value) -> RuntimeResult<()>;
 }
 

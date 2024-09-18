@@ -1,4 +1,4 @@
-pub(crate) use eval::{BoxEval, Eval};
+pub(crate) use eval::{Assign, BoxEval, Eval};
 pub(crate) use exec::{BoxExec, Exec};
 pub use runtime::Interpreter;
 

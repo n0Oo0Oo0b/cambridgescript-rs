@@ -100,9 +100,23 @@ impl<'a> ParseStream<'a> {
         T::parse(self)
     }
 
+    fn get_next(&mut self) -> Option<Token> {
+        loop {
+            // Skip whitespace and comment
+            match self.stream.next() {
+                Some(Token {
+                    type_: TokenType::Whitespace | TokenType::Comment,
+                    ..
+                }) => continue,
+                other => break other,
+            }
+        }
+    }
+
     pub fn peek(&mut self) -> Option<Token> {
+        // Manual get_or_insert_with() because of borrow rules
         if self.peeked.is_none() {
-            self.peeked = Some(self.stream.next());
+            self.peeked = Some(self.get_next());
         }
         unsafe { self.peeked.as_ref().unwrap_unchecked() }
             .as_ref()
@@ -112,15 +126,28 @@ impl<'a> ParseStream<'a> {
     pub fn advance(&mut self) -> Option<Token> {
         self.peeked
             .take()
-            .unwrap_or_else(|| self.stream.next())
+            .unwrap_or_else(|| self.get_next())
             .as_ref()
             .cloned()
     }
 
     pub fn consume(&mut self, kind: TokenType) -> Option<Token> {
-        todo!("ParseStream::consume")
+        if self.peek().is_some_and(|t| t.type_ == kind) {
+            self.advance()
+        } else {
+            None
+        }
     }
 
+    #[inline]
+    pub fn force_consume(&mut self, kind: TokenType, context: ParseContext) -> ParseResult<Token> {
+        self.consume(kind.clone()).ok_or(
+            self.error::<()>(ParseErrorKind::UnexpectedToken(kind), context)
+                .unwrap_err(),
+        )
+    }
+
+    #[inline]
     pub fn error<T>(
         &mut self,
         kind: ParseErrorKind,

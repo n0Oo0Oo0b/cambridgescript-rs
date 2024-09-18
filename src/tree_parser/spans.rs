@@ -56,4 +56,4 @@ impl_spanned!(expr::UnaryExpr => op_span + right);
 impl_spanned!(expr::Identifier => span);
 impl_spanned!(expr::Literal => span);
 
-impl_spanned!(stmt::Assignment => target + value);
+impl_spanned!(stmt::AssignStmt => target + value);

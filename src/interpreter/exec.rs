@@ -40,7 +40,7 @@ impl Exec for stmt::Input {
     }
 }
 
-impl Exec for stmt::If {
+impl Exec for stmt::IfStmt {
     fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
         let cond = self.condition.eval(state)?;
         if cond.try_into()? {
@@ -52,15 +52,30 @@ impl Exec for stmt::If {
     }
 }
 
-impl Exec for stmt::ConditionalLoop {
-    fn exec(&self, _state: &mut ProgramState) -> RuntimeResult<()> {
-        todo!("Exec loop")
+impl Exec for stmt::WhileLoop {
+    fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
+        while self.condition.eval(state)?.try_into()? {
+            self.body.exec(state)?;
+        }
+        Ok(())
     }
 }
 
-impl Exec for stmt::Assignment {
+impl Exec for stmt::UntilLoop {
     fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
-        state.set_variable(self.target.handle, self.value.eval(state)?)?;
+        loop {
+            self.body.exec(state)?;
+            if self.condition.eval(state)?.try_into()? {
+                break;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Exec for stmt::AssignStmt {
+    fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
+        self.target.assign(state, self.value.eval(state)?)?;
         Ok(())
     }
 }
