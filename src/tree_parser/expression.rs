@@ -191,7 +191,12 @@ fn parse_precedence(
                 right: parse_precedence(stream, prec.next())?,
             })
         }
-        Some(token_of!(LParen)) => todo!("parse_precedence/grouping"),
+        Some(token_of!(LParen)) => {
+            let s = stream.advance().unwrap().span;
+            let inner = parse_expr(stream)?;
+            stream.force_consume(TokenType::RParen, ("'(' was not closed", s))?;
+            inner
+        }
         t => {
             todo!("parse_precedence/_")
         }

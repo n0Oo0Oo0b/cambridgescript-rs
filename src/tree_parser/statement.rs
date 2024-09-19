@@ -154,7 +154,7 @@ impl Parse for stmt::VariableDecl {
             .expect("Declare statement")
             .span;
         let target = parse_assignable(stream)?;
-        stream.force_consume(TokenType::Colon, ("for variable declaration", s))?;
+        stream.force_consume(TokenType::Colon, ("Required for variable declaration", s))?;
         let r#type = stream.parse()?;
         Ok(Self { target, r#type })
     }
@@ -166,7 +166,10 @@ impl Parse for stmt::IfStmt {
         let condition = parse_expr(stream)?;
         stream.force_consume(
             TokenType::Then,
-            ("after IF condition", join_span(s, condition.get_span())),
+            (
+                "Required after IF condition",
+                join_span(s, condition.get_span()),
+            ),
         )?;
         let then_branch = block_ending_with![token_of!(Else) | token_of!(EndIf)](stream)?;
         let else_branch = if stream.consume(TokenType::Else).is_some() {
@@ -174,7 +177,7 @@ impl Parse for stmt::IfStmt {
         } else {
             stmt::Block::default()
         };
-        stream.force_consume(TokenType::EndIf, ("at the end of IF statement", s))?;
+        stream.force_consume(TokenType::EndIf, ("Required at the end of IF statement", s))?;
         Ok(stmt::IfStmt {
             condition,
             then_branch,
@@ -187,9 +190,9 @@ impl Parse for stmt::WhileLoop {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         stream.consume(TokenType::While).expect("While loop");
         let condition = parse_expr(stream)?;
-        stream.force_consume(TokenType::Do, ("after WHILE condition", None))?;
+        stream.force_consume(TokenType::Do, ("Required after WHILE condition", None))?;
         let body = block_ending_with![token_of!(EndWhile)](stream)?;
-        stream.force_consume(TokenType::EndWhile, ("after WHILE loop", None))?;
+        stream.force_consume(TokenType::EndWhile, ("Required after WHILE loop", None))?;
         Ok(Self { condition, body })
     }
 }
@@ -198,7 +201,7 @@ impl Parse for stmt::UntilLoop {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         stream.consume(TokenType::Repeat).expect("Until loop");
         let body = block_ending_with![token_of!(Until)](stream)?;
-        stream.force_consume(TokenType::Until, ("at the end of REPEAT", None))?;
+        stream.force_consume(TokenType::Until, ("Required after REPEAT body", None))?;
         let condition = parse_expr(stream)?;
         Ok(Self { condition, body })
     }
@@ -215,7 +218,10 @@ impl Parse for stmt::Output {
 impl Parse for stmt::AssignStmt {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         let target = parse_assignable(stream)?;
-        stream.force_consume(TokenType::LArrow, ("for assignment", None))?;
+        stream.force_consume(
+            TokenType::LArrow,
+            ("Parsing this as variable assignment", target.get_span()),
+        )?;
         let value = parse_expr(stream)?;
         Ok(Self { target, value })
     }

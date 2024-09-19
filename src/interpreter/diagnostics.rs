@@ -50,7 +50,7 @@ impl From<ParseError> for Diagnostic<()> {
         let mut labels = vec![Label::primary((), location.get_span().unwrap())
             .with_message(format!("Expected {expected}, found {location}"))];
         if let Some(span) = context.1 {
-            labels.push(Label::secondary((), span).with_message(format!("Required {}", context.0)));
+            labels.push(Label::secondary((), span).with_message(context.0));
         }
         Diagnostic::error()
             .with_message(message)
