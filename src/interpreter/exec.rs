@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::tree_parser::stmt::{self, VariableDecl};
+use crate::tree_parser::stmt;
 
 use super::runtime::RuntimeResult;
 use super::ProgramState;
@@ -20,7 +20,7 @@ impl Exec for stmt::Block {
     }
 }
 
-impl Exec for VariableDecl {
+impl Exec for stmt::VariableDecl {
     fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
         self.target.declare(state, self.r#type)?;
         Ok(())
