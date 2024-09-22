@@ -91,16 +91,18 @@ impl Interpreter {
 
     fn parse<T, F>(&mut self, source: &str, parse_fn: F) -> InterpretResult<T>
     where
-        F: Fn(&mut ParseStream) -> ParseResult<T>,
+        F: FnOnce(&mut ParseStream) -> ParseResult<T>,
     {
-        let mut scanner = Box::new(Scanner::new(source));
-        let maybe_parsed = parse_fn(&mut ParseStream::from_scanner(&mut scanner));
-        if !scanner.errors.is_empty() {
-            return Err(scanner
-                .errors
-                .into_iter()
-                .map(InterpretError::from)
-                .collect());
+        let mut scanner = Scanner::new(source);
+        let scanner_ptr: *mut Scanner<'_, '_> = &mut scanner;
+        let maybe_parsed = parse_fn(&mut ParseStream::from_scanner(
+            &mut scanner,
+            &mut self.ident_map,
+        ));
+        // SAFETY: <Scanner as Iterator> doesn't access the scanner's errors
+        let errors = unsafe { scanner_ptr.as_mut().unwrap().take_errors() };
+        if !errors.is_empty() {
+            return Err(errors.into_iter().map(InterpretError::from).collect());
         }
         match maybe_parsed {
             Ok(v) => Ok(v),
