@@ -75,16 +75,15 @@ impl Interpreter {
         let mut stdout = io::stdout();
         let stdin = io::stdin();
 
+        writeln!(stdout, "CambridgeScript REPL")?;
         loop {
-            write!(stdout, "> ")?;
+            write!(stdout, "{}", ">>> ".blue())?;
             stdout.flush()?;
-
             let mut input = String::new();
-            stdin.read_line(&mut input)?;
-            // match self.eval_src(&input) {
-            //     Err(e) => self.show_diagnostic(&input, &e),
-            //     Ok(v) => writeln!(stdout, "{v}")?,
-            // }
+            while stdin.read_line(&mut input)? > 1 {
+                write!(stdout, "{}", "... ".blue())?;
+                stdout.flush()?;
+            }
             self.full_exec(&input);
         }
     }
