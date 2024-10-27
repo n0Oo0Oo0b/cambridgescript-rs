@@ -236,7 +236,6 @@ impl<'a, 'src: 'a> Scanner<'src, 'a> {
         Some(Ok(self.make_token(token_type)))
     }
 
-    #[allow(unused)]
     pub fn take_errors(&mut self) -> Vec<ScannerError> {
         let mut errors = Vec::new();
         mem::swap(&mut self.errors, &mut errors);
@@ -269,7 +268,7 @@ mod tests {
 
     fn assert_token_type(source: &str, r#type: TokenType) {
         let token = match scan_single_token(source) {
-            Ok(Token { r#type: t, .. }) => t,
+            Ok(Token { inner: t, .. }) => t,
             Err(e) => panic!("Scan failed on {source:?}\nError: {e:?}"),
         };
         assert!(

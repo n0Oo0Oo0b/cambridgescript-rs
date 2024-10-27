@@ -2,7 +2,7 @@ use std::{fmt::Display, rc::Rc};
 
 use codespan::{ByteIndex, Span};
 
-use crate::tree_parser::MaybeSpanned;
+use crate::tree_parser::{MaybeSpanned, Spanned};
 
 #[rustfmt::skip]
 #[derive(Clone, Debug, PartialEq)]
@@ -119,31 +119,7 @@ impl Display for TokenType {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Token {
-    pub r#type: TokenType,
-    pub span: Option<Span>,
-}
-
-impl Token {
-    pub fn new(r#type: TokenType, span: Option<Span>) -> Self {
-        Self { r#type, span }
-    }
-
-    pub fn with_span(r#type: TokenType, span: Span) -> Self {
-        Self::new(r#type, Some(span))
-    }
-
-    pub fn without_span(r#type: TokenType) -> Self {
-        Self::new(r#type, None)
-    }
-}
-
-impl From<TokenType> for Token {
-    fn from(value: TokenType) -> Self {
-        Self::without_span(value)
-    }
-}
+pub type Token = Spanned<TokenType>;
 
 #[derive(Debug, Clone)]
 pub enum ErrorLocation {
@@ -164,8 +140,8 @@ impl MaybeSpanned for ErrorLocation {
 impl Display for ErrorLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Token(t) => write!(f, "{}", t.r#type),
-            Self::Eof(_) => write!(f, "EOF (end of file)"),
+            Self::Token(t) => write!(f, "{}", t.inner),
+            Self::Eof(_) => write!(f, "nothing"),
         }
     }
 }

@@ -11,10 +11,10 @@ use super::{
     enum_derive, join_span,
     parser::{token_of, Parse, ParseErrorKind, ParseResult, ParseStream},
     stmt::ProcedureDecl,
-    MaybeSpanned, Value,
+    MaybeSpanned, Spanned, Value,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BinaryOp {
     And,
     Or,
@@ -66,7 +66,7 @@ impl fmt::Display for UnaryOp {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
     Not,
     Neg,
@@ -109,19 +109,20 @@ impl TokenType {
 pub mod expr {
     use std::rc::Rc;
 
+    use crate::tree_parser::Spanned;
+
     use super::*;
 
     #[derive(Debug)]
     pub struct BinaryExpr {
         pub left: BoxEval,
-        pub op: BinaryOp,
         pub right: BoxEval,
+        pub op: Spanned<BinaryOp>,
     }
 
     #[derive(Debug)]
     pub struct UnaryExpr {
-        pub op: UnaryOp,
-        pub(crate) op_span: Option<Span>,
+        pub op: Spanned<UnaryOp>,
         pub right: BoxEval,
     }
 
@@ -155,7 +156,7 @@ impl Parse for expr::Literal {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         let token = stream.advance().expect("Literal token");
         Ok(Self {
-            value: token.r#type.try_into().expect("Literal token"),
+            value: token.inner.try_into().expect("Literal token"),
             span: token.span,
         })
     }
@@ -165,7 +166,7 @@ impl Parse for expr::Identifier {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         let (name, span) = match stream.advance() {
             Some(Token {
-                r#type: TokenType::Identifier(i),
+                inner: TokenType::Identifier(i),
                 span,
             }) => (i, span),
             _ => panic!("ident() called without identifier token"),
@@ -215,14 +216,13 @@ fn parse_precedence(
             | token_of!(BooleanLiteral(_)),
         ) => Box::new(expr::Literal::parse(stream)?),
         Some(token_of!(Identifier(_))) => Box::new(expr::Identifier::parse(stream)?),
-        Some(Token { r#type, span }) if let Some((op, prec)) = r#type.as_unary() => {
+        Some(Token { inner: item, span }) if let Some((op, prec)) = item.as_unary() => {
             if prec < precedence {
                 todo!("unary prec handling");
             }
             stream.advance();
             Box::new(expr::UnaryExpr {
-                op,
-                op_span: span,
+                op: Spanned::new(op, span),
                 right: parse_precedence(stream, prec.next())?,
             })
         }
@@ -238,15 +238,15 @@ fn parse_precedence(
     loop {
         // Infix rule
         res = match stream.peek() {
-            Some(Token { r#type, span }) if let Some((op, prec)) = r#type.as_binary() => {
+            Some(Token { inner: item, span }) if let Some((op, prec)) = item.as_binary() => {
                 if prec < precedence {
                     break;
                 }
                 stream.advance();
                 Box::new(expr::BinaryExpr {
                     left: res,
-                    op,
                     right: parse_precedence(stream, prec.next())?,
+                    op: Spanned::new(op, span),
                 })
             }
             _ => break,

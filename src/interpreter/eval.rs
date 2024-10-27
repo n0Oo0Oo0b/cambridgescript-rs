@@ -44,7 +44,7 @@ impl Eval for expr::BinaryExpr {
         let right = self.right.eval(state)?;
         let (lhs, rhs) = (left.clone(), right.clone());
 
-        match self.op {
+        match self.op.inner {
             // Short-circuit logic
             BinaryOp::And => Some(
                 if !self.left.as_bool(state)? {
@@ -88,7 +88,7 @@ impl Eval for expr::UnaryExpr {
         let right = self.right.eval(state)?;
         let rhs = right.clone();
 
-        match self.op {
+        match self.op.inner {
             UnaryOp::Not => !right,
             UnaryOp::Neg => -right,
         }

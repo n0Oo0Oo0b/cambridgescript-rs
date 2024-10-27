@@ -35,7 +35,7 @@ pub(crate) trait Parse: Sized {
 macro_rules! token_of {
     ($($t:tt)*) => {
         Token {
-            r#type: TokenType::$($t)*,
+            inner: TokenType::$($t)*,
             ..
         }
     };
@@ -102,7 +102,7 @@ impl<'s> ParseStream<'s> {
             // Skip whitespace and comment
             match self.stream.next() {
                 Some(Token {
-                    r#type: TokenType::Whitespace | TokenType::Comment,
+                    inner: TokenType::Whitespace | TokenType::Comment,
                     ..
                 }) => continue,
                 other => break other,
@@ -129,7 +129,7 @@ impl<'s> ParseStream<'s> {
     }
 
     pub fn consume(&mut self, kind: TokenType) -> Option<Token> {
-        if self.peek().is_some_and(|t| t.r#type == kind) {
+        if self.peek().is_some_and(|t| t.inner == kind) {
             self.advance()
         } else {
             None
