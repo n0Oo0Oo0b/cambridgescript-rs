@@ -1,12 +1,11 @@
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use codespan_reporting::{files::SimpleFile, term};
-use colored::Colorize;
+use colored::{Color, Colorize};
 use std::collections::HashMap;
 use std::io::{self, Write as _};
-use std::mem;
 use std::rc::Rc;
 
-use crate::tree_parser::{expr, parse_expr, PrimitiveType};
+use crate::tree_parser::{expr, PrimitiveType};
 use crate::{
     scanner::{Scanner, ScannerError},
     tree_parser::parser::{Parse, ParseError, ParseResult, ParseStream},
@@ -15,22 +14,11 @@ use crate::{
 
 use super::{Assign, Eval, Exec, ProgramState};
 
-// UndeclaredVariable -> "Undeclared variable"
-//      ident: "variable [var] not declared"
-//      _: "consider declaring it with `DECLARE [var]: [type]`"
-// UndefinedVariable -> "Undefined variable"
-//      ident: "variable [var] does not have a value"
-//      decl: "variable declared here"
-// IncompatibleAssignType "Incompatible assignment type"
-//      rhs: "cannot assign [val] (type [type]) to 'x'"
-//      decl: "variable has type [type]"
-// IncompatibleTypes -> "Incompatible type"
-//      op: "while evaluating [op]"
-//      lhs: "left side evaluates to [val1] (type [type1])"
-//      rhs: "right side evaluates to [val2] (type [type2])"
-// InvalidBool -> "Boolean condition expected"
-//      expr: "conditions must be BOOLEAN type"
-//      _: "consider using [check based on type] instead"
+macro_rules! write_color {
+    ($stream:expr, $color:expr, $($fmt:tt)*) => {
+        write!($stream, "{}", format!($($fmt)*).color($color))
+    };
+}
 
 #[derive(Debug, Clone)]
 pub enum RuntimeError<'a> {
@@ -42,7 +30,7 @@ pub enum RuntimeError<'a> {
         var: &'a dyn Assign,
     },
     InvalidAssignType {
-        assignment: &'a stmt::AssignStmt,
+        target: &'a dyn Assign,
         expected_type: PrimitiveType,
         value: Value,
     },
@@ -108,13 +96,17 @@ impl Interpreter {
 
         writeln!(stdout, "CambridgeScript REPL")?;
         loop {
-            write!(stdout, "{}", ">>> ".blue())?;
-            stdout.flush()?;
+            let mut lineno = 1usize;
             let mut input = String::new();
-            while stdin.read_line(&mut input)? > 1 {
-                write!(stdout, "{}", "... ".blue())?;
+            loop {
+                write_color!(stdout, Color::Blue, "{:2} │ ", lineno)?;
+                lineno += 1;
                 stdout.flush()?;
+                if stdin.read_line(&mut input)? <= 1 {
+                    break;
+                }
             }
+            writeln!(stdout)?;
             self.full_exec(&input);
         }
     }
