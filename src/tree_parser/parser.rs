@@ -60,29 +60,35 @@ macro_rules! block_ending_with {
 }
 pub(super) use block_ending_with;
 
-pub(crate) struct ParseStream<'a> {
-    stream: &'a mut dyn Iterator<Item = Token>,
+pub(crate) struct ParseStream<'s> {
+    pub stream: &'s mut dyn Iterator<Item = Token>,
     pub peeked: Option<Option<Token>>,
-    ident_map: HashMap<Rc<str>, usize>,
+    ident_map: &'s mut HashMap<Rc<str>, usize>,
     eof_index: Option<ByteIndex>,
 }
 
-impl<'a> ParseStream<'a> {
-    pub fn new(stream: &'a mut dyn Iterator<Item = Token>) -> Self {
+impl<'s> ParseStream<'s> {
+    pub fn new(
+        stream: &'s mut dyn Iterator<Item = Token>,
+        ident_map: &'s mut HashMap<Rc<str>, usize>,
+    ) -> Self {
         Self {
             stream,
             peeked: None,
-            ident_map: HashMap::new(),
+            ident_map,
             eof_index: None,
         }
     }
 
-    pub fn from_scanner<'s>(scanner: &'a mut Scanner<'s, 's>) -> Self {
+    pub fn from_scanner<'sc: 's>(
+        scanner: &'sc mut Scanner<'sc, 'sc>,
+        ident_map: &'s mut HashMap<Rc<str>, usize>,
+    ) -> Self {
         let source_len = scanner.source.len() as u32;
         Self {
-            stream: scanner as &'a mut dyn Iterator<Item = Token>,
+            stream: scanner as &'sc mut dyn Iterator<Item = Token>,
             peeked: None,
-            ident_map: HashMap::new(),
+            ident_map,
             eof_index: Some(ByteIndex(source_len)),
         }
     }
