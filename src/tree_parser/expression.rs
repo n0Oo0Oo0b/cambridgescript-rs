@@ -107,6 +107,8 @@ impl TokenType {
 }
 
 pub mod expr {
+    use std::rc::Rc;
+
     use super::*;
 
     #[derive(Debug)]
@@ -130,14 +132,15 @@ pub mod expr {
     }
 
     #[derive(Debug)]
-    pub struct ArrayIndex<E> {
-        pub array: E,
-        pub indexes: Box<[E]>,
+    pub struct ArrayIndex {
+        pub array: Box<dyn Assign>,
+        pub indexes: BoxEval,
     }
 
     #[derive(Debug)]
     pub struct Identifier {
         pub handle: usize,
+        pub name: Rc<str>,
         pub(crate) span: Option<Span>,
     }
 
@@ -160,15 +163,15 @@ impl Parse for expr::Literal {
 
 impl Parse for expr::Identifier {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
-        let (ident, span) = match stream.advance() {
+        let (name, span) = match stream.advance() {
             Some(Token {
                 r#type: TokenType::Identifier(i),
                 span,
             }) => (i, span),
             _ => panic!("ident() called without identifier token"),
         };
-        let handle = stream.get_ident_handle(ident);
-        Ok(Self { handle, span })
+        let handle = stream.get_ident_handle(name.clone());
+        Ok(Self { handle, span, name })
     }
 }
 
@@ -229,9 +232,7 @@ fn parse_precedence(
             stream.force_consume(TokenType::RParen, ("'(' was not closed", s))?;
             inner
         }
-        t => {
-            todo!("parse_precedence/_")
-        }
+        t => return stream.error(ParseErrorKind::ExpectedExpression, ("", None)),
     };
 
     loop {
