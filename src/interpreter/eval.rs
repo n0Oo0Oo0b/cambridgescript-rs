@@ -1,11 +1,25 @@
 use std::fmt::Debug;
+use std::rc::Rc;
 
 use super::runtime::{RuntimeError, RuntimeResult};
+use super::state::VariableState;
 use super::ProgramState;
 use crate::tree_parser::{expr, BinaryOp, MaybeSpanned, Pow, PrimitiveType, UnaryOp, Value};
 
 pub trait Eval: Debug + MaybeSpanned {
     fn eval(&self, state: &ProgramState) -> RuntimeResult<Value>;
+}
+
+impl dyn Eval {
+    pub fn as_bool(&self, state: &ProgramState) -> RuntimeResult<bool> {
+        match self.eval(state)? {
+            Value::Boolean(b) => Ok(b),
+            val => Err(RuntimeError::InvalidBool {
+                tree: self,
+                value: val,
+            }),
+        }
+    }
 }
 
 pub type BoxEval = Box<dyn Eval>;

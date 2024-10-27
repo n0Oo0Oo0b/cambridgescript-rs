@@ -50,8 +50,7 @@ impl Exec for stmt::Input {
 
 impl Exec for stmt::IfStmt {
     fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
-        let cond = self.condition.eval(state)?;
-        if cond.try_into()? {
+        if self.condition.as_bool(state)? {
             self.then_branch.exec(state)?;
         } else {
             self.else_branch.exec(state)?;
@@ -62,7 +61,7 @@ impl Exec for stmt::IfStmt {
 
 impl Exec for stmt::WhileLoop {
     fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
-        while self.condition.eval(state)?.try_into()? {
+        while self.condition.as_bool(state)? {
             self.body.exec(state)?;
         }
         Ok(())
@@ -73,7 +72,7 @@ impl Exec for stmt::UntilLoop {
     fn exec(&self, state: &mut ProgramState) -> RuntimeResult<()> {
         loop {
             self.body.exec(state)?;
-            if self.condition.eval(state)?.try_into()? {
+            if self.condition.as_bool(state)? {
                 break;
             }
         }

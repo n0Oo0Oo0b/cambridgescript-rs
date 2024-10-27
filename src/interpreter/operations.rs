@@ -5,19 +5,17 @@ use std::{
 
 use crate::tree_parser::{Pow, Value};
 
-use super::runtime::{RuntimeError, RuntimeResult};
-
 macro_rules! impl_arithmetic {
     ( $trait:path; $fn:ident [$op:tt] $( { $( $other:tt )* } )? ) => {
         impl $trait for Value {
-            type Output = RuntimeResult<Value>;
+            type Output = Option<Value>;
 
             fn $fn(self, rhs: Self) -> Self::Output {
-                Ok(match (self, rhs) {
+                Some(match (self, rhs) {
                     (Value::Integer(a), Value::Integer(b)) => Value::Integer(a $op b),
                     (Value::Real(a), Value::Real(b)) => Value::Real(a $op b),
                     $($( $other )*)?
-                    (l, r) => return Err(RuntimeError::IncompatibleTypes(l, r)),
+                    _ => return None,
                 })
             }
         }
@@ -35,38 +33,49 @@ impl_arithmetic!(Mul; mul [*]);
 impl_arithmetic!(Div; div [/]);
 
 impl Pow for Value {
-    type Output = RuntimeResult<Value>;
+    type Output = Option<Value>;
 
-    fn pow(self, rhs: Self) -> RuntimeResult<Value> {
-        Ok(match (self, rhs) {
+    fn pow(self, rhs: Self) -> Self::Output {
+        Some(match (self, rhs) {
             (Value::Integer(b), Value::Integer(e)) => Value::Integer(b.pow(e as u32)),
             (Value::Real(b), Value::Real(e)) => Value::Real(b.powf(e)),
-            (l, r) => return Err(RuntimeError::IncompatibleTypes(l, r)),
+            _ => return None,
         })
     }
 }
 
+impl TryFrom<Value> for bool {
+    type Error = ();
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Boolean(b) => Ok(b),
+            _ => Err(()),
+        }
+    }
+}
+
 impl Neg for Value {
-    type Output = RuntimeResult<Value>;
+    type Output = Option<Value>;
 
     fn neg(self) -> Self::Output {
         match self {
-            Value::Integer(x) => Ok(Value::Integer(-x)),
-            Value::Real(x) => Ok(Value::Real(-x)),
+            Value::Integer(x) => Some(Value::Integer(-x)),
+            Value::Real(x) => Some(Value::Real(-x)),
             // TODO: incompatible type for bool
-            x => Err(RuntimeError::IncompatibleTypes(x.clone(), x)),
+            _ => None,
         }
     }
 }
 
 impl Not for Value {
-    type Output = RuntimeResult<Value>;
+    type Output = Option<Value>;
 
     fn not(self) -> Self::Output {
         match self {
-            Value::Boolean(b) => Ok((!b).into()),
+            Value::Boolean(b) => Some((!b).into()),
             // TODO: incompatible type for bool
-            x => Err(RuntimeError::IncompatibleTypes(x.clone(), x)),
+            _ => None,
         }
     }
 }
