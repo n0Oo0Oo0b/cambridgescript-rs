@@ -1,9 +1,12 @@
 [package]
 name = "cambridgescript"
-version = "0.2.0"
+version = "0.3.0"
+authors = ["Daniel Gu <bobthebuilder10492@gmail.com>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Interpreter for Cambridge IGCSE Computer Science pseudocode"
+repository = "https://github.com/n0Oo0Oo0b/cambridgescript-rs"
+license = "MIT"
+categories = ["compilers"]
 
 [dependencies]
 codespan = "0.11.1"
