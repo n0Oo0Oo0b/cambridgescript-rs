@@ -1,43 +1,38 @@
 use std::io::Write;
+use std::mem;
 use std::{collections::HashMap, fmt};
 
 use crate::tree_parser::{PrimitiveType, Value};
 
-use super::runtime::{RuntimeError, RuntimeResult};
+#[derive(Clone)]
+pub enum VariableState {
+    Undeclared,
+    Declared(PrimitiveType),
+    Defined(Value),
+}
+
+impl Default for VariableState {
+    fn default() -> Self {
+        Self::Undeclared
+    }
+}
 
 #[derive(Default)]
 pub struct ProgramState {
-    variables: HashMap<usize, (PrimitiveType, Option<Value>)>,
+    variables: HashMap<usize, VariableState>,
     pub(super) stdout: Vec<u8>,
 }
 
 impl ProgramState {
-    pub fn get_variable(&self, handle: usize) -> RuntimeResult<Value> {
-        Ok(self
-            .variables
+    pub fn get_var(&self, handle: usize) -> VariableState {
+        self.variables
             .get(&handle)
-            .ok_or(RuntimeError::UndeclaredVariable(handle))?
-            .1
-            .as_ref()
-            .ok_or(RuntimeError::UndefinedVariable(handle))?
-            .clone())
+            .cloned()
+            .unwrap_or(VariableState::default())
     }
 
-    pub fn declare_variable(&mut self, handle: usize, r#type: PrimitiveType) -> RuntimeResult<()> {
-        self.variables.insert(handle, (r#type, None));
-        Ok(())
-    }
-
-    pub fn set_variable(&mut self, handle: usize, value: Value) -> RuntimeResult<()> {
-        let (r#type, current) = self
-            .variables
-            .get_mut(&handle)
-            .ok_or(RuntimeError::UndeclaredVariable(handle))?;
-        if *r#type != value.get_type() {
-            return Err(RuntimeError::InvalidAssignmentType(handle, value));
-        }
-        let _ = current.insert(value);
-        Ok(())
+    pub fn get_var_mut(&mut self, handle: usize) -> &mut VariableState {
+        self.variables.entry(handle).or_default()
     }
 
     pub(super) fn write(&mut self, thing: impl AsRef<str>) {
@@ -48,5 +43,11 @@ impl ProgramState {
 
     pub(super) fn write_fmt(&mut self, fmt: fmt::Arguments<'_>) {
         self.stdout.write_fmt(fmt).expect("Failed to output");
+    }
+
+    pub(super) fn take_stdout(&mut self) -> Box<[u8]> {
+        let mut value = Vec::new();
+        mem::swap(&mut self.stdout, &mut value);
+        value.into_boxed_slice()
     }
 }
