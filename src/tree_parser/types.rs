@@ -23,7 +23,13 @@ impl Parse for PrimitiveType {
             Some(token_of!(Real)) => Self::Real,
             Some(token_of!(Boolean)) => Self::Boolean,
             tok => {
-                return stream.error(ParseErrorKind::ExpectedType, ("", tok.and_then(|t| t.span)))
+                return stream.error(
+                    ParseErrorKind::ExpectedType,
+                    (
+                        "To declare a variable, you must specify a datatype",
+                        tok.and_then(|t| t.span),
+                    ),
+                )
             }
         };
         stream.advance();

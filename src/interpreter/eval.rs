@@ -141,7 +141,7 @@ impl Assign for expr::Identifier {
             Ok(())
         } else {
             Err(RuntimeError::InvalidAssignType {
-                assignment: todo!("Assign"),
+                target: self,
                 expected_type: r#type,
                 value,
             })

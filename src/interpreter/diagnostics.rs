@@ -1,5 +1,5 @@
 use codespan::Span;
-use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::diagnostic::{Diagnostic, Label, LabelStyle};
 
 use crate::{
     scanner::ScannerError,
@@ -45,7 +45,7 @@ impl From<ParseError> for Diagnostic<()> {
             }
             ParseErrorKind::ExpectedExpression => ("Expected expression", "expression".to_string()),
             ParseErrorKind::ExpectedStatement => ("Expected statement", "statement".to_string()),
-            ParseErrorKind::ExpectedType => ("Expected statement", "statement".to_string()),
+            ParseErrorKind::ExpectedType => ("Expected type", "type".to_string()),
         };
 
         let mut labels = vec![Label::primary((), location.get_span().unwrap())
@@ -61,12 +61,13 @@ impl From<ParseError> for Diagnostic<()> {
 
 fn label_or_note(
     maybe_span: Option<Span>,
+    style: LabelStyle,
     message: impl Into<String>,
     labels: &mut Vec<Label<()>>,
     notes: &mut Vec<String>,
 ) {
     match maybe_span {
-        Some(span) => labels.push(Label::primary((), span).with_message(message)),
+        Some(span) => labels.push(Label::new(style, (), span).with_message(message)),
         None => notes.push(message.into()),
     }
 }
@@ -85,10 +86,15 @@ impl From<RuntimeError<'_>> for Diagnostic<()> {
 
         let message = match value {
             RuntimeError::UndeclaredVariable { var, required_type } => {
-                let msg = format!("Variable {} not declared", var.get_name());
-                label_or_note(var.get_span(), msg, &mut labels, &mut notes);
+                label_or_note(
+                    var.get_span(),
+                    LabelStyle::Primary,
+                    format!("Variable {} not declared", var.get_name()),
+                    &mut labels,
+                    &mut notes,
+                );
                 notes.push(format!(
-                    "Consider declaring it with `DECLARE {}: {}",
+                    "Consider declaring it with `DECLARE {}: {}`",
                     var.get_name(),
                     required_type.map_or("[datatype]".to_string(), |t| t.to_string())
                 ));
@@ -96,42 +102,88 @@ impl From<RuntimeError<'_>> for Diagnostic<()> {
             }
 
             RuntimeError::UndefinedVariable { var } => {
-                let msg = format!("Variable {} doesn't have a value", var.get_name());
-                label_or_note(var.get_span(), msg, &mut labels, &mut notes);
+                label_or_note(
+                    var.get_span(),
+                    LabelStyle::Primary,
+                    format!("Variable {} doesn't have a value", var.get_name()),
+                    &mut labels,
+                    &mut notes,
+                );
                 "Undefined variable"
             }
 
             RuntimeError::InvalidAssignType {
-                assignment,
+                target,
                 expected_type,
                 value,
             } => {
                 let msg = format!(
                     "Cannot assign {} to variable {} ({} datatype)",
                     val_and_type!(value),
-                    assignment.target.get_name(),
+                    target.get_name(),
                     expected_type,
                 );
-                label_or_note(assignment.value.get_span(), msg, &mut labels, &mut notes);
+                label_or_note(
+                    target.get_span(),
+                    LabelStyle::Primary,
+                    msg,
+                    &mut labels,
+                    &mut notes,
+                );
                 "Incompatible assignment type"
             }
 
             RuntimeError::InvalidBinOpTypes { tree, lhs, rhs } => {
-                notes.push(format!("Incompatible types for '{}'", tree.op));
-                let msg = format!("Left side evaluates to {}", val_and_type!(lhs));
-                label_or_note(tree.left.get_span(), msg, &mut labels, &mut notes);
-                let msg = format!("Right side evaluates to {}", val_and_type!(rhs));
-                label_or_note(tree.right.get_span(), msg, &mut labels, &mut notes);
+                label_or_note(
+                    tree.op.span,
+                    LabelStyle::Primary,
+                    format!("Incompatible types for '{}'", tree.op.inner),
+                    &mut labels,
+                    &mut notes,
+                );
+                label_or_note(
+                    tree.left.get_span(),
+                    LabelStyle::Secondary,
+                    format!("Left side evaluates to {}", val_and_type!(lhs)),
+                    &mut labels,
+                    &mut notes,
+                );
+                label_or_note(
+                    tree.right.get_span(),
+                    LabelStyle::Secondary,
+                    format!("Right side evaluates to {}", val_and_type!(rhs)),
+                    &mut labels,
+                    &mut notes,
+                );
                 "Incompatible types for binary operator"
             }
 
             RuntimeError::InvalidUnOpType { tree, rhs } => {
-                todo!()
+                label_or_note(
+                    tree.op.span,
+                    LabelStyle::Primary,
+                    format!("Incompatible type for '{}'", tree.op.inner),
+                    &mut labels,
+                    &mut notes,
+                );
+                label_or_note(
+                    tree.right.get_span(),
+                    LabelStyle::Secondary,
+                    format!("Argument evaluates to {}", val_and_type!(rhs)),
+                    &mut labels,
+                    &mut notes,
+                );
+                "Incompatible type for unary operator"
             }
 
             RuntimeError::InvalidBool { tree, value } => {
-                let msg = format!("Evaluates to {}", val_and_type!(value));
-                label_or_note(tree.get_span(), msg, &mut labels, &mut notes);
+                label_or_note(
+                    tree.get_span(),
+                    LabelStyle::Secondary,
+                    format!("Evaluates to {}", val_and_type!(value)),
+                    &mut labels,
+                    &mut notes,
+                );
                 notes.push("All conditions must be the BOOLEAN datatype".to_string());
                 "Invalid type for condition"
             }
