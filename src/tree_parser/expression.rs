@@ -1,3 +1,6 @@
+use core::fmt;
+use std::fmt::Debug;
+
 use crate::{
     interpreter::{Assign, BoxEval, Eval},
     token::{Token, TokenType},
@@ -28,10 +31,39 @@ pub enum BinaryOp {
     Gt,
 }
 
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::And => "AND",
+            Self::Or => "OR",
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Pow => "^",
+            Self::Eq => "=",
+            Self::Ne => "<>",
+            Self::Le => "<=",
+            Self::Ge => ">=",
+            Self::Lt => "<",
+            Self::Gt => ">",
+        })
+    }
+}
+
 pub trait Pow<Rhs = Self> {
     type Output;
 
     fn pow(self, rhs: Rhs) -> Self::Output;
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Not => "NOT",
+            Self::Neg => "-",
+        })
+    }
 }
 
 #[derive(Debug)]

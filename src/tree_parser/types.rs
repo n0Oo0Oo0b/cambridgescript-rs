@@ -31,6 +31,19 @@ impl Parse for PrimitiveType {
     }
 }
 
+impl fmt::Display for PrimitiveType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Char => "CHAR",
+            Self::String => "STRING",
+            Self::Integer => "INTEGER",
+            Self::Real => "REAL",
+            Self::Boolean => "BOOLEAN",
+        }
+        .fmt(f)
+    }
+}
+
 #[derive(Debug)]
 pub struct ArrayType {
     pub inner_type: PrimitiveType,
