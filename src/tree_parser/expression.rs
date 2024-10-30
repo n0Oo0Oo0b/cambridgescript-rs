@@ -228,7 +228,7 @@ fn parse_precedence(
         }
         Some(token_of!(LParen)) => {
             let s = stream.advance().unwrap().span;
-            let inner = parse_expr(stream)?;
+            let inner = stream.parse()?;
             stream.force_consume(TokenType::RParen, ("'(' was not closed", s))?;
             inner
         }
@@ -262,14 +262,16 @@ pub(crate) fn parse_assignable(stream: &mut ParseStream) -> ParseResult<Box<dyn 
     }
 }
 
-pub fn parse_expr(stream: &mut ParseStream) -> ParseResult<Box<dyn Eval>> {
-    parse_precedence(stream, Precedence::None)
+impl Parse for Box<dyn Eval> {
+    fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
+        parse_precedence(stream, Precedence::None)
+    }
 }
 
 pub(super) fn parse_arguments(stream: &mut ParseStream) -> ParseResult<Box<[BoxEval]>> {
-    let mut items = vec![parse_expr(stream)?];
+    let mut items = vec![stream.parse()?];
     while stream.consume(TokenType::Comma).is_some() {
-        items.push(parse_expr(stream)?);
+        items.push(stream.parse()?);
     }
     Ok(items.into())
 }

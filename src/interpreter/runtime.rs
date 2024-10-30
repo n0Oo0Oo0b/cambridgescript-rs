@@ -106,8 +106,8 @@ impl Interpreter {
                     break;
                 }
             }
-            writeln!(stdout)?;
             self.full_exec(&input);
+            writeln!(stdout)?;
         }
     }
 

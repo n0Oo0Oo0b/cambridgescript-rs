@@ -7,7 +7,7 @@ use crate::{
 };
 
 use super::{
-    expr, join_span, parse_arguments, parse_assignable, parse_expr,
+    expr, join_span, parse_arguments, parse_assignable,
     parser::{
         block_ending_with, token_of, Parse, ParseError, ParseErrorKind, ParseResult, ParseStream,
     },
@@ -163,7 +163,7 @@ impl Parse for stmt::VariableDecl {
 impl Parse for stmt::IfStmt {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         let s = stream.consume(TokenType::If).expect("If statement").span;
-        let condition = parse_expr(stream)?;
+        let condition: BoxEval = stream.parse()?;
         stream.force_consume(
             TokenType::Then,
             (
@@ -189,7 +189,7 @@ impl Parse for stmt::IfStmt {
 impl Parse for stmt::WhileLoop {
     fn parse(stream: &mut ParseStream) -> ParseResult<Self> {
         stream.consume(TokenType::While).expect("While loop");
-        let condition = parse_expr(stream)?;
+        let condition = stream.parse()?;
         stream.force_consume(TokenType::Do, ("Required after WHILE condition", None))?;
         let body = block_ending_with![token_of!(EndWhile)](stream)?;
         stream.force_consume(TokenType::EndWhile, ("Required after WHILE loop", None))?;
@@ -202,7 +202,7 @@ impl Parse for stmt::UntilLoop {
         stream.consume(TokenType::Repeat).expect("Until loop");
         let body = block_ending_with![token_of!(Until)](stream)?;
         stream.force_consume(TokenType::Until, ("Required after REPEAT body", None))?;
-        let condition = parse_expr(stream)?;
+        let condition = stream.parse()?;
         Ok(Self { condition, body })
     }
 }
@@ -222,7 +222,7 @@ impl Parse for stmt::AssignStmt {
             TokenType::LArrow,
             ("Parsing this as variable assignment", target.get_span()),
         )?;
-        let value = parse_expr(stream)?;
+        let value = stream.parse()?;
         Ok(Self { target, value })
     }
 }
