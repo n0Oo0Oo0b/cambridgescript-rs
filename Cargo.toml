@@ -1,6 +1,6 @@
 [package]
 name = "cambridgescript"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Daniel Gu <bobthebuilder10492@gmail.com>"]
 edition = "2021"
 description = "Interpreter for Cambridge IGCSE Computer Science pseudocode"
@@ -12,3 +12,9 @@ categories = ["compilers"]
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"
 colored = "2.1.0"
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 2
